@@ -1,64 +1,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import {
   AdminService,
   ADMIN_COMMAND_TYPES,
 } from '../domains/admin/service.js';
-import { KillSwitchService } from '../domains/admin/kill-switch.js';
 import { FeaturePrerequisiteRegistry } from '../domains/admin/prerequisites.js';
 import {
-  PgFeatureFlagRepository,
-  MemoryFeatureFlagDriver,
-  UnregisteredFlagError,
-} from '../adapters/pg-feature-flags.js';
-import {
-  PgConfigRepository,
-  MemoryConfigDriver,
-} from '../adapters/pg-config.js';
-import {
-  PgAdminAuditLogger,
-  MemoryAuditDriver,
-} from '../adapters/pg-audit.js';
-import {
-  PgTransactionAdapter,
-  MemoryTransactionDriver,
-} from '../adapters/pg-transaction.js';
+  MemoryAdminPersistence,
+} from '../adapters/pg-admin-persistence.js';
+import { MissingDatabaseDriverError } from '../adapters/pg-idempotency.js';
+import { UnregisteredFlagError } from '../adapters/pg-feature-flags.js';
 import { QTV_ROLES, InvalidReasonError } from '../core/rbac.js';
 import { createCommand } from '../core/command.js';
 import { CONFIG_CATEGORIES, UnresolvedConfigError, RulesetSnapshot } from '../core/config.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 function setupAdminFixture() {
-  const flagDriver = new MemoryFeatureFlagDriver();
-  const flagRepo = new PgFeatureFlagRepository(flagDriver);
-
-  const configDriver = new MemoryConfigDriver();
-  const configRepo = new PgConfigRepository(configDriver);
-
-  const killSwitchService = new KillSwitchService();
+  const adminPersistence = new MemoryAdminPersistence();
   const prerequisiteRegistry = new FeaturePrerequisiteRegistry();
 
-  const auditDriver = new MemoryAuditDriver();
-  const auditLogger = new PgAdminAuditLogger(auditDriver);
-
   const adminService = new AdminService({
-    featureFlagRepo: flagRepo,
-    configRepo: configRepo,
-    killSwitchService,
+    adminPersistence,
     prerequisiteRegistry,
-    auditLogger,
   });
 
   return {
     adminService,
-    flagRepo,
-    configRepo,
-    killSwitchService,
+    adminPersistence,
     prerequisiteRegistry,
-    auditDriver,
   };
 }
 
-test('Admin Shell: 1. Trusted Actor & Payload Spoofing Rejection', async () => {
+test('Admin Shell: 1. Fail Fast without explicit adminPersistence', () => {
+  assert.throws(() => new AdminService({}), MissingDatabaseDriverError);
+  assert.throws(() => new AdminService({ adminPersistence: null }), MissingDatabaseDriverError);
+});
+
+test('Admin Shell: 2. Trusted Actor & Payload Spoofing Rejection', async () => {
   const { adminService } = setupAdminFixture();
 
   // Missing trusted admin actor rejected
@@ -88,7 +72,7 @@ test('Admin Shell: 1. Trusted Actor & Payload Spoofing Rejection', async () => {
   }, /Security Error: Admin command payload must not dictate admin actor identity/);
 });
 
-test('Admin Shell: 2. RBAC Permission Matrix & Separation of Duties', async () => {
+test('Admin Shell: 3. RBAC Permission Matrix & Separation of Duties', async () => {
   const { adminService } = setupAdminFixture();
 
   const modActor = { actorId: 'mod_001', role: QTV_ROLES.MODERATOR };
@@ -119,7 +103,7 @@ test('Admin Shell: 2. RBAC Permission Matrix & Separation of Duties', async () =
   }, /Permission Denied: Role "SECURITY_REVIEWER" lacks permission "config.draft"/);
 });
 
-test('Admin Shell: 3. Rejects Generic DB Mutations and Direct Money Modifications', async () => {
+test('Admin Shell: 4. Rejects Generic DB Mutations and Direct Money Modifications', async () => {
   const { adminService } = setupAdminFixture();
   const superAdmin = { actorId: 'super_001', role: QTV_ROLES.SUPER_ADMIN };
 
@@ -141,7 +125,16 @@ test('Admin Shell: 3. Rejects Generic DB Mutations and Direct Money Modification
   }
 });
 
-test('Admin Shell: 4. Reason Enforcement for Sensitive Operations', async () => {
+test('Admin Shell: 5. Codebase contains no generic recordMutation API calls in AdminService', () => {
+  const serviceCode = fs.readFileSync(path.resolve(__dirname, '../domains/admin/service.js'), 'utf8');
+  assert.equal(
+    serviceCode.includes('recordMutation'),
+    false,
+    'AdminService must NOT use generic recordMutation({table, action, data}) API'
+  );
+});
+
+test('Admin Shell: 6. Reason Enforcement for Sensitive Operations', async () => {
   const { adminService } = setupAdminFixture();
   const superAdmin = { actorId: 'super_001', role: QTV_ROLES.SUPER_ADMIN };
 
@@ -169,19 +162,11 @@ test('Admin Shell: 4. Reason Enforcement for Sensitive Operations', async () => 
   assert.equal(res.success, true);
 });
 
-test('Admin Shell Atomic Rollback 1: Feature flag mutation rolls back when audit persistence fails', async () => {
-  const { adminService, flagRepo } = setupAdminFixture();
+test('Admin Shell Atomic Rollback: Feature flag remains unchanged after audit failure', async () => {
+  const { adminService, adminPersistence } = setupAdminFixture();
   const superAdmin = { actorId: 'super_001', role: QTV_ROLES.SUPER_ADMIN };
 
-  // Setup transaction driver configured to fail during audit recording
-  const txDriver = new MemoryTransactionDriver();
-  txDriver.recordMutation = async (mutation) => {
-    if (mutation.table === 'v2_admin_audit_logs') {
-      throw new Error('Audit table database disk full failure');
-    }
-    txDriver.mutations.push(mutation);
-  };
-  const txAdapter = new PgTransactionAdapter(txDriver);
+  adminPersistence.simulateAuditFailure = true;
 
   await assert.rejects(async () => {
     await adminService.executeAdminCommand({
@@ -191,33 +176,46 @@ test('Admin Shell Atomic Rollback 1: Feature flag mutation rolls back when audit
         actor: superAdmin,
         payload: { flagKey: 'ACCOUNT_V2', enabled: true, reason: 'Testing atomic rollback' },
       }),
-      txAdapter,
     });
-  }, /Audit table database disk full failure/);
+  }, /Simulated audit persistence failure inside transaction/);
 
-  // Assert transaction rolled back and flag state was not committed
-  assert.equal(txDriver.committed, false);
-  assert.equal(txDriver.rolledBack, true);
-  assert.equal(await flagRepo.isEnabled('ACCOUNT_V2'), false);
+  // Assert feature flag remains OFF
+  assert.equal(await adminPersistence.isEnabled('ACCOUNT_V2'), false);
+  assert.equal((await adminPersistence.getAuditRecords()).length, 0);
 });
 
-test('Admin Shell Atomic Rollback 2: Config approval rolls back when audit persistence fails', async () => {
-  const { adminService, configRepo } = setupAdminFixture();
+test('Admin Shell Atomic Rollback: Config draft remains unchanged after audit failure', async () => {
+  const { adminService, adminPersistence } = setupAdminFixture();
   const econManager = { actorId: 'econ_001', role: QTV_ROLES.ECONOMY_MANAGER };
 
-  // Create valid draft config
-  await configRepo.db.saveRuleset('2.0.0-atomic', 'DRAFT', {
-    'STAKE': { category: CONFIG_CATEGORIES.ECONOMY_CONFIG, value: 100 },
+  adminPersistence.simulateAuditFailure = true;
+
+  await assert.rejects(async () => {
+    await adminService.executeAdminCommand({
+      adminActor: econManager,
+      command: createCommand({
+        type: ADMIN_COMMAND_TYPES.CONFIG_CREATE_DRAFT,
+        actor: econManager,
+        payload: { version: '2.0.0-draft-test', definitions: {}, reason: 'Drafting' },
+      }),
+    });
+  }, /Simulated audit persistence failure inside transaction/);
+
+  assert.equal(await adminPersistence.getRulesetByVersion('2.0.0-draft-test'), null);
+});
+
+test('Admin Shell Atomic Rollback: Config approval remains DRAFT after audit failure', async () => {
+  const { adminService, adminPersistence } = setupAdminFixture();
+  const econManager = { actorId: 'econ_001', role: QTV_ROLES.ECONOMY_MANAGER };
+
+  // Create valid draft in storage
+  await adminPersistence.withTransaction(async (tx) => {
+    await tx.config.saveRuleset('2.0.0-atomic', 'DRAFT', {
+      'STAKE': { category: CONFIG_CATEGORIES.ECONOMY_CONFIG, value: 100 },
+    });
   });
 
-  const txDriver = new MemoryTransactionDriver();
-  txDriver.recordMutation = async (mutation) => {
-    if (mutation.table === 'v2_admin_audit_logs') {
-      throw new Error('Audit DB write error');
-    }
-    txDriver.mutations.push(mutation);
-  };
-  const txAdapter = new PgTransactionAdapter(txDriver);
+  adminPersistence.simulateAuditFailure = true;
 
   await assert.rejects(async () => {
     await adminService.executeAdminCommand({
@@ -227,27 +225,19 @@ test('Admin Shell Atomic Rollback 2: Config approval rolls back when audit persi
         actor: econManager,
         payload: { version: '2.0.0-atomic', reason: 'Approving ruleset' },
       }),
-      txAdapter,
     });
-  }, /Audit DB write error/);
+  }, /Simulated audit persistence failure inside transaction/);
 
-  // Assert draft ruleset remained DRAFT and was not committed as APPROVED
-  const rec = await configRepo.db.getRulesetByVersion('2.0.0-atomic');
+  // Assert ruleset remains DRAFT
+  const rec = await adminPersistence.getRulesetByVersion('2.0.0-atomic');
   assert.equal(rec.status, 'DRAFT');
 });
 
-test('Admin Shell Atomic Rollback 3: Kill switch mutation rolls back when audit persistence fails', async () => {
-  const { adminService, killSwitchService } = setupAdminFixture();
+test('Admin Shell Atomic Rollback: Kill switch remains unchanged after audit failure', async () => {
+  const { adminService, adminPersistence } = setupAdminFixture();
   const secReviewer = { actorId: 'sec_001', role: QTV_ROLES.SECURITY_REVIEWER };
 
-  const txDriver = new MemoryTransactionDriver();
-  txDriver.recordMutation = async (mutation) => {
-    if (mutation.table === 'v2_admin_audit_logs') {
-      throw new Error('Audit table write error');
-    }
-    txDriver.mutations.push(mutation);
-  };
-  const txAdapter = new PgTransactionAdapter(txDriver);
+  adminPersistence.simulateAuditFailure = true;
 
   await assert.rejects(async () => {
     await adminService.executeAdminCommand({
@@ -257,23 +247,24 @@ test('Admin Shell Atomic Rollback 3: Kill switch mutation rolls back when audit 
         actor: secReviewer,
         payload: { switchKey: 'KILL_SWITCH_TEST', active: true, reason: 'Emergency test' },
       }),
-      txAdapter,
     });
-  }, /Audit table write error/);
+  }, /Simulated audit persistence failure inside transaction/);
 
-  assert.equal(await killSwitchService.isKillSwitchActive('KILL_SWITCH_TEST'), false);
+  assert.equal(await adminPersistence.isKillSwitchActive('KILL_SWITCH_TEST'), false);
 });
 
-test('Admin Shell Server-Side Config Approval: 4 & 5. Omitted or forged client snapshot cannot approve unresolved persisted config', async () => {
-  const { adminService, configRepo } = setupAdminFixture();
+test('Admin Shell Server-Side Config Approval: Omitted or forged client snapshot cannot approve unresolved persisted config', async () => {
+  const { adminService, adminPersistence } = setupAdminFixture();
   const econManager = { actorId: 'econ_001', role: QTV_ROLES.ECONOMY_MANAGER };
 
   // Save DRAFT ruleset containing TBD_FROM_DATA in database
-  await configRepo.db.saveRuleset('2.0.0-tbd', 'DRAFT', {
-    'THEFT_CAP': {
-      category: CONFIG_CATEGORIES.TBD_FROM_DATA,
-      value: CONFIG_CATEGORIES.TBD_FROM_DATA,
-    },
+  await adminPersistence.withTransaction(async (tx) => {
+    await tx.config.saveRuleset('2.0.0-tbd', 'DRAFT', {
+      'THEFT_CAP': {
+        category: CONFIG_CATEGORIES.TBD_FROM_DATA,
+        value: CONFIG_CATEGORIES.TBD_FROM_DATA,
+      },
+    });
   });
 
   // 1. Omitted client snapshot in payload MUST NOT bypass TBD validation
@@ -309,23 +300,25 @@ test('Admin Shell Server-Side Config Approval: 4 & 5. Omitted or forged client s
   }, UnresolvedConfigError);
 
   // Assert draft ruleset in DB remains DRAFT
-  const draftRec = await configRepo.db.getRulesetByVersion('2.0.0-tbd');
+  const draftRec = await adminPersistence.getRulesetByVersion('2.0.0-tbd');
   assert.equal(draftRec.status, 'DRAFT');
 });
 
-test('Admin Shell Server-Driven Prerequisites: 6. Feature prerequisite validation cannot be bypassed by omitting payload config', async () => {
-  const { adminService, prerequisiteRegistry, configRepo } = setupAdminFixture();
+test('Admin Shell Server-Driven Prerequisites: Feature prerequisite validation cannot be bypassed by omitting payload config', async () => {
+  const { adminService, prerequisiteRegistry, adminPersistence } = setupAdminFixture();
   const superAdmin = { actorId: 'super_001', role: QTV_ROLES.SUPER_ADMIN };
 
   // Register prerequisite
   prerequisiteRegistry.registerPrerequisites('CARD_WAGER', ['CARD_STAKE_TIERS']);
 
   // Save approved ruleset with TBD parameter in DB
-  await configRepo.db.saveRuleset('1.0.0', 'APPROVED', {
-    'CARD_STAKE_TIERS': {
-      category: CONFIG_CATEGORIES.TBD_FROM_DATA,
-      value: CONFIG_CATEGORIES.TBD_FROM_DATA,
-    },
+  await adminPersistence.withTransaction(async (tx) => {
+    await tx.config.saveRuleset('1.0.0', 'APPROVED', {
+      'CARD_STAKE_TIERS': {
+        category: CONFIG_CATEGORIES.TBD_FROM_DATA,
+        value: CONFIG_CATEGORIES.TBD_FROM_DATA,
+      },
+    });
   });
 
   // Client attempts to enable flag without providing snapshot payload field
@@ -341,8 +334,8 @@ test('Admin Shell Server-Driven Prerequisites: 6. Feature prerequisite validatio
   }, UnresolvedConfigError);
 });
 
-test('Admin Shell Audit Integrity: 7. Successful admin mutation produces exactly one durable audit record with secret stripping', async () => {
-  const { adminService, auditDriver } = setupAdminFixture();
+test('Admin Shell Audit Integrity: Exactly one audit row is persisted on success with secret stripping', async () => {
+  const { adminService, adminPersistence } = setupAdminFixture();
   const superAdmin = { actorId: 'super_001', role: QTV_ROLES.SUPER_ADMIN };
 
   const res = await adminService.executeAdminCommand({
@@ -360,8 +353,8 @@ test('Admin Shell Audit Integrity: 7. Successful admin mutation produces exactly
   });
 
   assert.equal(res.success, true);
-  const auditRecords = await auditDriver.getAuditRecords();
+  const auditRecords = await adminPersistence.getAuditRecords();
   assert.equal(auditRecords.length, 1);
-  assert.equal(auditRecords[0].adminActorId, 'super_001');
+  assert.equal(auditRecords[0].adminActor.actorId, 'super_001');
   assert.equal(auditRecords[0].metadata.apiKey, '[REDACTED]');
 });
