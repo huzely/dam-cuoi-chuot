@@ -83,10 +83,12 @@ CREATE TABLE IF NOT EXISTS public.v2_feature_flags (
 );
 
 ALTER TABLE public.v2_feature_flags ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON public.v2_feature_flags TO anon, authenticated;
 
 --------------------------------------------------------------------------------
 -- 5. ADMIN / QTV AUDIT LOG STORAGE
--- Append-only audit table. UPDATE and DELETE privileges are explicitly revoked.
+-- Append-only audit table. Direct client writes, UPDATE, and DELETE privileges
+-- are explicitly revoked. Audit rows are inserted only via trusted server endpoints.
 --------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.v2_admin_audit_logs (
   event_id TEXT PRIMARY KEY,
@@ -101,16 +103,14 @@ CREATE TABLE IF NOT EXISTS public.v2_admin_audit_logs (
 
 ALTER TABLE public.v2_admin_audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Append-only immutability enforcement: Revoke UPDATE and DELETE
-REVOKE UPDATE, DELETE ON public.v2_admin_audit_logs FROM PUBLIC, anon, authenticated;
+-- Explicit privilege scoping: Revoke UPDATE, DELETE, and direct client INSERT on v2_admin_audit_logs
+REVOKE UPDATE, DELETE, INSERT ON public.v2_admin_audit_logs FROM PUBLIC, anon, authenticated;
 
 --------------------------------------------------------------------------------
--- 6. AUTHORITATIVE PERSISTENCE INVARIANT DOCUMENTATION
--- Direct public/anon table writes are disabled.
--- Authoritative state mutations MUST execute via semantic domain operations
--- on trusted server endpoints, NOT generic table-mutation RPCs.
+-- Explicit privilege scoping for V2 tables (Does NOT alter legacy tables)
 --------------------------------------------------------------------------------
-REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC, anon;
-GRANT SELECT ON public.v2_feature_flags TO anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.v2_idempotency FROM PUBLIC, anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.v2_outbox FROM PUBLIC, anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.v2_config_rulesets FROM PUBLIC, anon, authenticated;
 
 COMMIT;

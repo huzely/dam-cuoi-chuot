@@ -5,13 +5,17 @@
  */
 
 import { assertPermission } from '../core/rbac.js';
+import { MissingDatabaseDriverError } from './pg-idempotency.js';
 
 export class PgAdminAuditLogger {
   /**
-   * @param {Object} [dbClient]
+   * @param {Object} dbClient - Production DB driver or explicit test memory driver
    */
-  constructor(dbClient = null) {
-    this.db = dbClient || new MemoryPgAuditDriver();
+  constructor(dbClient) {
+    if (!dbClient) {
+      throw new MissingDatabaseDriverError('PgAdminAuditLogger');
+    }
+    this.db = dbClient;
   }
 
   /**
@@ -55,7 +59,10 @@ export class PgAdminAuditLogger {
   }
 }
 
-class MemoryPgAuditDriver {
+/**
+ * EXPLICIT TEST DOUBLE: In-memory driver for audit logger unit tests.
+ */
+export class MemoryAuditDriver {
   constructor() {
     this.records = [];
   }

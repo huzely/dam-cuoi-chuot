@@ -11,6 +11,14 @@ import {
   ConcurrentExecutionError,
 } from '../core/idempotency.js';
 
+export class MissingDatabaseDriverError extends Error {
+  constructor(adapterName) {
+    super(`Production persistence adapter "${adapterName}" requires an explicit database driver instance. Silent fallback to memory is disabled.`);
+    this.name = 'MissingDatabaseDriverError';
+    this.code = 'MISSING_DATABASE_DRIVER';
+  }
+}
+
 /**
  * Computes a canonical, deterministic SHA-256 fingerprint for a command.
  *
@@ -41,10 +49,13 @@ function canonicalizeJson(obj) {
 
 export class PgIdempotencyStore {
   /**
-   * @param {Object} [dbClient] - Postgres/Supabase DB client interface or mock driver
+   * @param {Object} dbClient - Production DB driver or explicit test memory driver instance
    */
-  constructor(dbClient = null) {
-    this.db = dbClient || new MemoryPgDriver();
+  constructor(dbClient) {
+    if (!dbClient) {
+      throw new MissingDatabaseDriverError('PgIdempotencyStore');
+    }
+    this.db = dbClient;
   }
 
   /**
@@ -125,9 +136,10 @@ export class PgIdempotencyStore {
 }
 
 /**
- * In-memory DB driver simulating PostgreSQL (actor_id, key) composite primary key behavior.
+ * EXPLICIT TEST DOUBLE: In-memory driver simulating PostgreSQL (actor_id, key) composite primary key behavior.
+ * Used for unit and contract testing only.
  */
-class MemoryPgDriver {
+export class MemoryIdempotencyDriver {
   constructor() {
     this.table = new Map();
   }

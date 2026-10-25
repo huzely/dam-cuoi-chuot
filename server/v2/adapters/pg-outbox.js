@@ -5,9 +5,13 @@
  * 1. Outbox records are inserted into the v2_outbox table INSIDE the atomic DB transaction.
  * 2. Status in storage: 'COMMITTED_IN_STORAGE'.
  * 3. Asynchronous post-commit publisher handles event delivery.
- * 4. Publication failures AFTER commit transition status to 'PUBLICATION_FAILED_RETRYABLE'
- *    leaving already-committed DB state untouched and available for retry.
+ * 4. Publication status updates (PUBLISHED or PUBLICATION_FAILED_RETRYABLE) are persisted
+ *    durably into database storage via the outbox repository driver.
+ * 5. Delivery failures AFTER commit transition status to 'PUBLICATION_FAILED_RETRYABLE' with
+ *    incremented attempt count and stored last error, leaving committed DB state untouched.
  */
+
+import { MissingDatabaseDriverError } from './pg-idempotency.js';
 
 export class PgOutboxRecorder {
   constructor() {
@@ -49,25 +53,57 @@ export class PgOutboxRecorder {
 }
 
 export class PgOutboxPublisher {
-  constructor(publishFn = async () => {}) {
+  /**
+   * @param {Object} dbClient - Production DB driver or explicit test memory driver
+   * @param {Function} [publishFn] - External event publishing transport (e.g. WebSocket / RabbitMQ / EventBridge)
+   */
+  constructor(dbClient, publishFn = async () => {}) {
+    if (!dbClient) {
+      throw new MissingDatabaseDriverError('PgOutboxPublisher');
+    }
+    this.db = dbClient;
     this.publishFn = publishFn;
   }
 
+  /**
+   * Delivers committed outbox records post-commit and durably persists status updates in DB storage.
+   *
+   * @param {Array<Object>} outboxRecords
+   */
   async publishCommitted(outboxRecords) {
     const publishedEvents = [];
     const publicationErrors = [];
 
     for (const record of outboxRecords) {
+      const eventId = record.event.eventId;
       try {
         await this.publishFn(record.event);
+        const publishedAt = new Date().toISOString();
+
+        // Durably update outbox record status to PUBLISHED in DB storage
+        await this.db.updateOutboxRecordStatus(eventId, {
+          status: 'PUBLISHED',
+          publishedAt,
+        });
+
         record.status = 'PUBLISHED';
-        record.publishedAt = new Date().toISOString();
+        record.publishedAt = publishedAt;
         publishedEvents.push(record.event);
       } catch (err) {
+        const attemptCount = (record.attemptCount || 0) + 1;
+        const lastError = err.message;
+
+        // Durably update outbox record status to PUBLICATION_FAILED_RETRYABLE in DB storage
+        await this.db.updateOutboxRecordStatus(eventId, {
+          status: 'PUBLICATION_FAILED_RETRYABLE',
+          attemptCount,
+          lastError,
+        });
+
         record.status = 'PUBLICATION_FAILED_RETRYABLE';
-        record.attemptCount = (record.attemptCount || 0) + 1;
-        record.lastError = err.message;
-        publicationErrors.push({ eventId: record.event.eventId, error: err });
+        record.attemptCount = attemptCount;
+        record.lastError = lastError;
+        publicationErrors.push({ eventId, error: err });
       }
     }
 
@@ -75,5 +111,31 @@ export class PgOutboxPublisher {
       publishedEvents,
       publicationErrors,
     };
+  }
+}
+
+/**
+ * EXPLICIT TEST DOUBLE: In-memory driver for testing durable outbox state persistence.
+ */
+export class MemoryOutboxDriver {
+  constructor() {
+    this.outboxTable = new Map();
+  }
+
+  async insertOutboxRecord(record) {
+    this.outboxTable.set(record.event.eventId, { ...record });
+  }
+
+  async updateOutboxRecordStatus(eventId, updates) {
+    const existing = this.outboxTable.get(eventId) || { event: { eventId } };
+    this.outboxTable.set(eventId, {
+      ...existing,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async getOutboxRecord(eventId) {
+    return this.outboxTable.get(eventId) || null;
   }
 }

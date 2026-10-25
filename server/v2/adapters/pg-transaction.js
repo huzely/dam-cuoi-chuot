@@ -4,59 +4,61 @@
  * within the same atomic database transaction.
  */
 
+import { MissingDatabaseDriverError } from './pg-idempotency.js';
+
 export class PgTransactionAdapter {
-  constructor() {
-    this.active = false;
-    this.committed = false;
-    this.rolledBack = false;
-    this.mutations = [];
-    this.stagedOutboxEvents = [];
-    this.simulateOutboxPersistFailure = false; // Testing hook
+  /**
+   * @param {Object} dbClient - Production DB client or explicit test driver
+   */
+  constructor(dbClient) {
+    if (!dbClient) {
+      throw new MissingDatabaseDriverError('PgTransactionAdapter');
+    }
+    this.db = dbClient;
   }
 
   async begin() {
-    if (this.active) {
-      throw new Error('Postgres transaction is already active.');
-    }
-    this.active = true;
+    await this.db.beginTransaction();
   }
 
   async recordMutation(mutation) {
-    if (!this.active) {
-      throw new Error('Cannot record mutation outside an active transaction.');
-    }
-    this.mutations.push(mutation);
+    await this.db.recordMutation(mutation);
   }
 
   async stageOutboxEvent(domainEvent) {
-    if (!this.active) {
-      throw new Error('Cannot stage outbox event outside an active transaction.');
-    }
-    if (this.simulateOutboxPersistFailure) {
-      throw new Error('Transactional outbox persistence failed before commit.');
-    }
-    this.stagedOutboxEvents.push(domainEvent);
+    await this.db.stageOutboxEvent(domainEvent);
   }
 
   async commit() {
-    if (!this.active) {
-      throw new Error('Cannot commit an inactive transaction.');
-    }
-    this.active = false;
-    this.committed = true;
+    await this.db.commitTransaction();
   }
 
   async rollback() {
-    if (!this.active && !this.committed) return;
-    this.active = false;
-    this.rolledBack = true;
-    this.mutations = [];
-    this.stagedOutboxEvents = [];
+    await this.db.rollbackTransaction();
+  }
+
+  get committed() {
+    return this.db.committed;
+  }
+
+  get rolledBack() {
+    return this.db.rolledBack;
+  }
+
+  get mutations() {
+    return this.db.mutations || [];
+  }
+
+  get stagedOutboxEvents() {
+    return this.db.stagedOutboxEvents || [];
   }
 }
 
 export class PgUnitOfWork {
   constructor(pgTransactionAdapter, outboxRecorder) {
+    if (!pgTransactionAdapter) {
+      throw new Error('PgUnitOfWork requires a valid PgTransactionAdapter.');
+    }
     this.tx = pgTransactionAdapter;
     this.outbox = outboxRecorder;
   }
@@ -83,5 +85,51 @@ export class PgUnitOfWork {
       this.outbox.clearPending();
       throw err;
     }
+  }
+}
+
+/**
+ * EXPLICIT TEST DOUBLE: Memory transaction driver simulating PostgreSQL transaction block.
+ */
+export class MemoryTransactionDriver {
+  constructor() {
+    this.active = false;
+    this.committed = false;
+    this.rolledBack = false;
+    this.mutations = [];
+    this.stagedOutboxEvents = [];
+    this.simulateOutboxPersistFailure = false;
+  }
+
+  async beginTransaction() {
+    if (this.active) throw new Error('Transaction active');
+    this.active = true;
+  }
+
+  async recordMutation(mutation) {
+    if (!this.active) throw new Error('Inactive transaction');
+    this.mutations.push(mutation);
+  }
+
+  async stageOutboxEvent(domainEvent) {
+    if (!this.active) throw new Error('Inactive transaction');
+    if (this.simulateOutboxPersistFailure) {
+      throw new Error('Transactional outbox persistence failed before commit.');
+    }
+    this.stagedOutboxEvents.push(domainEvent);
+  }
+
+  async commitTransaction() {
+    if (!this.active) throw new Error('Inactive transaction');
+    this.active = false;
+    this.committed = true;
+  }
+
+  async rollbackTransaction() {
+    if (!this.active && !this.committed) return;
+    this.active = false;
+    this.rolledBack = true;
+    this.mutations = [];
+    this.stagedOutboxEvents = [];
   }
 }

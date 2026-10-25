@@ -26,10 +26,24 @@ test('Schema Migration Static Verification: 001_v2_foundation_schema.sql format 
     'v2_idempotency must declare composite PRIMARY KEY (actor_id, key)'
   );
 
-  // Verify audit log immutability (REVOKE UPDATE, DELETE)
+  // Verify audit log immutability (REVOKE UPDATE, DELETE, INSERT)
   assert.ok(
-    sqlContent.includes('REVOKE UPDATE, DELETE ON public.v2_admin_audit_logs'),
-    'Audit logs must revoke UPDATE and DELETE permissions'
+    sqlContent.includes('REVOKE UPDATE, DELETE, INSERT ON public.v2_admin_audit_logs'),
+    'Audit logs must revoke UPDATE, DELETE, and direct INSERT permissions'
+  );
+
+  // BLOCKER 1 REGRESSION CHECK: Verify NO schema-wide REVOKE ON ALL TABLES statements exist
+  assert.equal(
+    sqlContent.includes('ON ALL TABLES IN SCHEMA'),
+    false,
+    'Migration must NOT contain schema-wide REVOKE/GRANT statements on ALL TABLES IN SCHEMA public'
+  );
+
+  // BLOCKER 2 REGRESSION CHECK: Assert NO generic arbitrary table-mutation RPC exists
+  assert.equal(
+    sqlContent.includes('v2_execute_atomic_unit_of_work'),
+    false,
+    'Migration must NOT define a generic arbitrary table-mutation RPC'
   );
 
   // Verify non-destructive guarantee: NO DROP or ALTER on legacy tables

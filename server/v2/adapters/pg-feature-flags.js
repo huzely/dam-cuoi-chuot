@@ -8,6 +8,7 @@
  */
 
 import { FEATURE_FLAGS } from '../core/feature-flags.js';
+import { MissingDatabaseDriverError } from './pg-idempotency.js';
 
 export class UnregisteredFlagError extends Error {
   constructor(flagKey) {
@@ -19,10 +20,13 @@ export class UnregisteredFlagError extends Error {
 
 export class PgFeatureFlagRepository {
   /**
-   * @param {Object} [dbClient]
+   * @param {Object} dbClient - Production DB driver or explicit test memory driver
    */
-  constructor(dbClient = null) {
-    this.db = dbClient || new MemoryPgFeatureFlagDriver();
+  constructor(dbClient) {
+    if (!dbClient) {
+      throw new MissingDatabaseDriverError('PgFeatureFlagRepository');
+    }
+    this.db = dbClient;
     this.validFlags = new Set(Object.values(FEATURE_FLAGS));
   }
 
@@ -58,7 +62,10 @@ export class PgFeatureFlagRepository {
   }
 }
 
-class MemoryPgFeatureFlagDriver {
+/**
+ * EXPLICIT TEST DOUBLE: In-memory driver for feature flag repository unit tests.
+ */
+export class MemoryFeatureFlagDriver {
   constructor() {
     this.table = new Map();
   }

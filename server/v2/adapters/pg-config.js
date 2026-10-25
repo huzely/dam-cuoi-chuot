@@ -5,13 +5,17 @@
  */
 
 import { RulesetSnapshot, UnresolvedConfigError } from '../core/config.js';
+import { MissingDatabaseDriverError } from './pg-idempotency.js';
 
 export class PgConfigRepository {
   /**
-   * @param {Object} [dbClient]
+   * @param {Object} dbClient - Production DB driver or explicit test memory driver
    */
-  constructor(dbClient = null) {
-    this.db = dbClient || new MemoryPgConfigDriver();
+  constructor(dbClient) {
+    if (!dbClient) {
+      throw new MissingDatabaseDriverError('PgConfigRepository');
+    }
+    this.db = dbClient;
   }
 
   /**
@@ -40,7 +44,10 @@ export class PgConfigRepository {
   }
 }
 
-class MemoryPgConfigDriver {
+/**
+ * EXPLICIT TEST DOUBLE: In-memory driver for ruleset repository unit tests.
+ */
+export class MemoryConfigDriver {
   constructor() {
     this.table = new Map();
   }
