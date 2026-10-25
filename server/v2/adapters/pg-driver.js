@@ -93,6 +93,17 @@ export class PgTxContext {
 
     this.config = {
       saveRuleset: async (version, status, definitions) => {
+        const existingRes = await this.client.query(
+          `SELECT status FROM public.v2_config_rulesets WHERE version = $1`,
+          [version]
+        );
+        if (existingRes.rows.length > 0) {
+          const existingStatus = existingRes.rows[0].status;
+          if (existingStatus === 'APPROVED' || existingStatus === 'ARCHIVED') {
+            throw new Error(`Forbidden Mutation Error: Ruleset version "${version}" is ${existingStatus} and immutable.`);
+          }
+        }
+
         await this.client.query(
           `INSERT INTO public.v2_config_rulesets (version, status, definitions, created_at)
            VALUES ($1, $2, $3::jsonb, NOW())
@@ -112,18 +123,18 @@ export class PgTxContext {
     this.killSwitch = {
       setKillSwitch: async (switchKey, active) => {
         await this.client.query(
-          `INSERT INTO public.v2_feature_flags (flag_key, enabled, description, updated_at)
-           VALUES ($1, $2, 'Kill Switch', NOW())
-           ON CONFLICT (flag_key) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = NOW()`,
+          `INSERT INTO public.v2_kill_switches (switch_key, active, updated_at)
+           VALUES ($1, $2, NOW())
+           ON CONFLICT (switch_key) DO UPDATE SET active = EXCLUDED.active, updated_at = NOW()`,
           [switchKey, Boolean(active)]
         );
       },
       isKillSwitchActive: async (switchKey) => {
         const res = await this.client.query(
-          `SELECT enabled FROM public.v2_feature_flags WHERE flag_key = $1`,
+          `SELECT active FROM public.v2_kill_switches WHERE switch_key = $1`,
           [switchKey]
         );
-        return res.rows.length > 0 ? Boolean(res.rows[0].enabled) : false;
+        return res.rows.length > 0 ? Boolean(res.rows[0].active) : false;
       },
     };
 
@@ -221,8 +232,8 @@ export class PgTxContext {
         });
 
         await this.client.query(
-          `INSERT INTO public.v2_admin_audit_logs (event_id, admin_actor_id, admin_role, action, target_ref, reason, command_id, created_at)
-           VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NOW())`,
+          `INSERT INTO public.v2_admin_audit_logs (event_id, admin_actor_id, admin_role, action, target_ref, reason, command_id, metadata, created_at)
+           VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::jsonb, NOW())`,
           [
             auditRecord.eventId,
             auditRecord.adminActor.actorId,
@@ -231,6 +242,7 @@ export class PgTxContext {
             JSON.stringify(auditRecord.targetRef || {}),
             auditRecord.reason,
             commandId || null,
+            JSON.stringify(auditRecord.metadata || {}),
           ]
         );
 

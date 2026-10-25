@@ -2,7 +2,7 @@
  * Command Execution Pipeline Primitive for V2.
  *
  * Flow:
- * Command -> Validation -> Idempotency Check -> Domain Action -> Unit of Work (DB Tx containing Mutations + Outbox Persist) -> Commit -> Async Outbox Publication
+ * Command -> Validation -> Async Idempotency Check -> Domain Action -> Unit of Work -> Commit -> Async Outbox Publication
  */
 
 import { TransactionContext, UnitOfWork } from './transaction.js';
@@ -28,8 +28,10 @@ export async function executePipeline({
 
   // 2. Idempotency claim step
   const idempotencyKey = command.idempotencyKey;
+  const actorId = command.actor?.actorId;
+
   if (idempotencyStore && idempotencyKey) {
-    const claimResult = idempotencyStore.claim(idempotencyKey, command);
+    const claimResult = await idempotencyStore.claim(idempotencyKey, command);
     if (claimResult.status === 'COMPLETED') {
       return {
         replayed: true,
@@ -38,7 +40,7 @@ export async function executePipeline({
     }
   }
 
-  // 3. Domain action & Unit of Work (Atomic DB Transaction containing State Mutations + Outbox Persistence)
+  // 3. Domain action & Unit of Work
   const tx = txContextOverride || new TransactionContext();
   const outbox = new OutboxRecorder();
   const uow = new UnitOfWork(tx, outbox);
@@ -52,15 +54,13 @@ export async function executePipeline({
       });
     });
 
-    // At this point, tx.committed === true and outbox records are committed in DB storage.
-
     // 4. Post-commit Outbox Event Publication
     const publisher = new OutboxPublisher(publisherFn || (async () => {}));
     const publishResult = await publisher.publishCommitted(outbox.getCommittedOutboxRecords());
 
     // 5. Record idempotency completion
     if (idempotencyStore && idempotencyKey) {
-      idempotencyStore.complete(idempotencyKey, result);
+      await idempotencyStore.complete(actorId, idempotencyKey, result);
     }
 
     return {
@@ -73,7 +73,7 @@ export async function executePipeline({
   } catch (err) {
     // Record idempotency failure
     if (idempotencyStore && idempotencyKey) {
-      idempotencyStore.fail(idempotencyKey, err);
+      await idempotencyStore.fail(actorId, idempotencyKey, err);
     }
     throw err;
   }

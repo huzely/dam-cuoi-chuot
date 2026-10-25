@@ -10,6 +10,7 @@ import { AdminService, ADMIN_COMMAND_TYPES } from '../domains/admin/service.js';
 import { QTV_ROLES } from '../core/rbac.js';
 import { createCommand } from '../core/command.js';
 import { createDomainEvent } from '../core/event.js';
+import { CONFIG_CATEGORIES } from '../core/config.js';
 import { IdempotencyMismatchError, ConcurrentExecutionError } from '../core/idempotency.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -31,7 +32,6 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
     t.diagnostic('  NOT EXECUTED — TEST/STAGING DATABASE NOT PROVIDED');
     t.diagnostic('  (Set POSTGRES_TEST_URL to execute live PostgreSQL integration tests)');
     t.diagnostic('================================================================================');
-    assert.ok(true, 'Live integration suite cleanly skipped (no test DB environment supplied).');
     return;
   }
 
@@ -62,11 +62,12 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'v2_%'`
       );
       const tables = res.rows.map(r => r.table_name);
-      assert.ok(tables.includes('v2_idempotency'));
-      assert.ok(tables.includes('v2_outbox'));
-      assert.ok(tables.includes('v2_config_rulesets'));
-      assert.ok(tables.includes('v2_feature_flags'));
-      assert.ok(tables.includes('v2_admin_audit_logs'));
+      assert.equal(tables.includes('v2_idempotency'), true);
+      assert.equal(tables.includes('v2_outbox'), true);
+      assert.equal(tables.includes('v2_config_rulesets'), true);
+      assert.equal(tables.includes('v2_feature_flags'), true);
+      assert.equal(tables.includes('v2_kill_switches'), true);
+      assert.equal(tables.includes('v2_admin_audit_logs'), true);
     });
 
     await t.test('3. Test real PostgreSQL transaction COMMIT and ROLLBACK', async () => {
@@ -133,7 +134,71 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(auditRes.rows[0].reason, 'Live PostgreSQL rollout test');
     });
 
-    await t.test('6. Idempotency (actor_id, key) uniqueness and concurrency on PostgreSQL', async () => {
+    await t.test('6. Config DRAFT creation, approval, and APPROVED immutability on PostgreSQL', async () => {
+      const econManager = { actorId: 'econ_pg_1', role: QTV_ROLES.ECONOMY_MANAGER };
+
+      // Draft creation
+      await adminService.executeAdminCommand({
+        adminActor: econManager,
+        command: createCommand({
+          type: ADMIN_COMMAND_TYPES.CONFIG_CREATE_DRAFT,
+          actor: econManager,
+          payload: {
+            version: '2.0.0-pg',
+            definitions: { 'BASE_FEE': { category: CONFIG_CATEGORIES.ECONOMY_CONFIG, value: 50 } },
+            reason: 'Draft ruleset for live PG test',
+          },
+        }),
+      });
+
+      // Approval
+      await adminService.executeAdminCommand({
+        adminActor: econManager,
+        command: createCommand({
+          type: ADMIN_COMMAND_TYPES.CONFIG_APPROVE,
+          actor: econManager,
+          payload: { version: '2.0.0-pg', reason: 'Approving ruleset' },
+        }),
+      });
+
+      // Assert version status is APPROVED
+      const approvedRes = await pgDriver.withTransaction(async (tx) => tx.config.getRulesetByVersion('2.0.0-pg'));
+      assert.equal(approvedRes.status, 'APPROVED');
+
+      // Attempting to overwrite APPROVED version fails
+      await assert.rejects(async () => {
+        await adminService.executeAdminCommand({
+          adminActor: econManager,
+          command: createCommand({
+            type: ADMIN_COMMAND_TYPES.CONFIG_CREATE_DRAFT,
+            actor: econManager,
+            payload: {
+              version: '2.0.0-pg',
+              definitions: { 'BASE_FEE': { category: CONFIG_CATEGORIES.ECONOMY_CONFIG, value: 999 } },
+              reason: 'Overwriting approved ruleset',
+            },
+          }),
+        });
+      }, /Forbidden Mutation Error/);
+    });
+
+    await t.test('7. Durable Kill Switch + audit atomic commit on PostgreSQL', async () => {
+      const secReviewer = { actorId: 'sec_pg_1', role: QTV_ROLES.SECURITY_REVIEWER };
+
+      await adminService.executeAdminCommand({
+        adminActor: secReviewer,
+        command: createCommand({
+          type: ADMIN_COMMAND_TYPES.KILL_SWITCH_SET,
+          actor: secReviewer,
+          payload: { switchKey: 'KILL_SWITCH_CARD_WAGER', active: true, reason: 'Live PG test emergency shutoff' },
+        }),
+      });
+
+      const active = await pgDriver.withTransaction(async (tx) => tx.killSwitch.isKillSwitchActive('KILL_SWITCH_CARD_WAGER'));
+      assert.equal(active, true);
+    });
+
+    await t.test('8. Idempotency (actor_id, key) uniqueness and concurrency on PostgreSQL', async () => {
       const actorA = { actorId: 'actor_pg_A' };
       const actorB = { actorId: 'actor_pg_B' };
       const cmdA1 = createCommand({

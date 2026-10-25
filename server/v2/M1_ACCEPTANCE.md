@@ -1,6 +1,6 @@
 # Đám Cưới Chuột V2 — Milestone M1 Final Acceptance Report
 
-**Status**: HARNESS READY — LIVE VERIFICATION PENDING
+**Status**: HARNESS READY — LIVE POSTGRES VERIFICATION NOT EXECUTED
 **Date**: March 2025
 **Version**: 2.0.0-m1.4
 
@@ -46,8 +46,8 @@ All existing legacy game systems (`SAVE4.money`, `dcc.c4`, `dcc.c4b`, `dcc.jg`, 
 ## Test Execution Summary
 
 - **Total Test Files in `server/v2/tests/`**: 11
-- **Unit & Security Static Test Cases**: **46 PASS / 0 FAIL** (100% Pass)
-- **Integration Test Cases**: **1 HARNESS READY / SKIPPED** (Pending `POSTGRES_TEST_URL`)
+- **Unit & Security Static Test Suite**: **52 PASS / 0 FAIL** (100% Pass)
+- **Integration Test Harness**: **1 HARNESS READY / SKIPPED** (`NOT EXECUTED — TEST/STAGING DATABASE NOT PROVIDED`)
 - **Unit Test Command**: `cd server/v2 && npm test`
 - **Integration Test Command**: `cd server/v2 && POSTGRES_TEST_URL="..." npm run test:integration`
 
@@ -62,7 +62,7 @@ All existing legacy game systems (`SAVE4.money`, `dcc.c4`, `dcc.c4b`, `dcc.jg`, 
 7. `pg-adapter-contracts.test.js` (7 tests) — PASS
 8. `pg-schema-migration.test.js` (1 test) — PASS
 9. `rbac.test.js` (4 tests) — PASS
-10. `security-static.test.js` (6 tests) — PASS
+10. `security-static.test.js` (7 tests) — PASS
 11. `postgres-integration.test.js` (1 integration harness test) — SKIPPED (`NOT EXECUTED — TEST/STAGING DATABASE NOT PROVIDED`)
 
 ---
@@ -76,7 +76,11 @@ All existing legacy game systems (`SAVE4.money`, `dcc.c4`, `dcc.c4b`, `dcc.jg`, 
 - **Unit & Adapter Contract Verification**: **VERIFIED (100% PASS)** using explicit test drivers (`MemoryAdminPersistence`, `MemoryIdempotencyDriver`, etc.).
 - **Static Schema & Security Verification**: **VERIFIED (100% PASS)** via automated file and migration AST/regex scanning (`security-static.test.js` and `pg-schema-migration.test.js`).
 - **Live PostgreSQL Engine Execution**: **NOT EXECUTED — LIVE VERIFICATION PENDING**. The executable integration test harness (`postgres-integration.test.js`) is fully implemented using `pg` and will execute automatically when `POSTGRES_TEST_URL` is configured in a staging environment.
-- **Unverified Acceptance Items**: Live PostgreSQL multi-connection lock concurrency, live Supabase RLS policy execution, live PostgreSQL migration execution on a remote database server.
+
+### List of Unverified Acceptance Items:
+1. Live PostgreSQL multi-connection lock concurrency under parallel load.
+2. Live Supabase RLS policy execution on a remote Supabase instance.
+3. Live PostgreSQL migration execution against a live PostgreSQL server.
 
 ---
 

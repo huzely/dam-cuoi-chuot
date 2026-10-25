@@ -117,3 +117,17 @@ test('Security Static Scan 6: Integration test harness contains real database qu
     'Architecture Violation: Integration test steps must execute real assertions rather than assert.ok(true) placeholders'
   );
 });
+
+test('Security Static Scan 7: No post-COMMIT mutation hooks in PgTransactionAdapter or PgDriver', () => {
+  const txPath = path.join(v2RootDir, 'adapters/pg-transaction.js');
+  const driverPath = path.join(v2RootDir, 'adapters/pg-driver.js');
+
+  const txContent = fs.readFileSync(txPath, 'utf8');
+  const driverContent = fs.readFileSync(driverPath, 'utf8');
+
+  assert.equal(
+    txContent.includes('onCommit(') || driverContent.includes('onCommit('),
+    false,
+    'Architecture Violation: Authoritative mutations must not use onCommit hooks'
+  );
+});

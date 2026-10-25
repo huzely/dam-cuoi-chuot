@@ -5,12 +5,13 @@
  * - NEW -> CLAIMED (PENDING)
  * - PENDING -> COMPLETED (cached result) or FAILED (error record)
  *
- * Enforces semantics for:
- * 1. Completed replay (returns cached result without re-executing side effects)
- * 2. Pending concurrent duplicate detection
- * 3. Payload mismatch detection
- * 4. Explicit failure and retry handling
+ * Unified Async Contract:
+ * - claim(key, command) -> Promise<{ status: 'CLAIMED'|'COMPLETED', result?, previousError? }>
+ * - complete(actorId, key, result) -> Promise<void>
+ * - fail(actorId, key, error) -> Promise<void>
  */
+
+import crypto from 'node:crypto';
 
 export class IdempotencyMismatchError extends Error {
   constructor(message) {
@@ -28,52 +29,73 @@ export class ConcurrentExecutionError extends Error {
   }
 }
 
+/**
+ * Computes a canonical, deterministic SHA-256 fingerprint for a command.
+ * @param {string} commandType
+ * @param {Object} payload
+ * @returns {string} SHA-256 hex digest
+ */
+export function computeCanonicalFingerprint(commandType, payload) {
+  const canonicalPayload = canonicalizeJson(payload || {});
+  const rawString = `${commandType}:${canonicalPayload}`;
+  return crypto.createHash('sha256').update(rawString).digest('hex');
+}
+
+function canonicalizeJson(obj) {
+  if (obj === null || typeof obj !== 'object') {
+    return JSON.stringify(obj);
+  }
+  if (Array.isArray(obj)) {
+    return '[' + obj.map(canonicalizeJson).join(',') + ']';
+  }
+  const keys = Object.keys(obj).sort();
+  const keyValues = keys.map(k => `${JSON.stringify(k)}:${canonicalizeJson(obj[k])}`);
+  return '{' + keyValues.join(',') + '}';
+}
+
 export class IdempotencyStore {
   constructor() {
-    /** @type {Map<string, { status: 'PENDING'|'COMPLETED'|'FAILED', commandType: string, payloadHash: string, result?: any, error?: any, createdAt: string }>} */
+    /** @type {Map<string, { status: 'PENDING'|'COMPLETED'|'FAILED', commandType: string, requestFingerprint: string, result?: any, error?: any, createdAt: string }>} */
     this.records = new Map();
   }
 
-  /**
-   * Helper to compute a simple signature hash for command payload verification.
-   */
-  _computeHash(commandType, payload) {
-    return `${commandType}:${JSON.stringify(payload || {})}`;
+  _makeKey(actorId, key) {
+    return `${actorId || 'global'}::${key}`;
   }
 
   /**
    * Claims an idempotency key for command execution.
-   *
-   * @param {string} key - Idempotency key
-   * @param {Object} command - Command instance containing type and payload
-   * @returns {{ status: 'CLAIMED' | 'COMPLETED', result?: any, previousError?: any }}
    */
-  claim(key, command) {
+  async claim(key, command) {
     if (!key) {
-      return { status: 'CLAIMED' }; // No key provided, execution proceeds without idempotency caching
+      return { status: 'CLAIMED' };
     }
 
-    const payloadHash = this._computeHash(command.type, command.payload);
-    const existing = this.records.get(key);
+    const actorId = command.actor.actorId;
+    const pk = this._makeKey(actorId, key);
+    const fingerprint = computeCanonicalFingerprint(command.type, command.payload);
+    const existing = this.records.get(pk);
 
     if (!existing) {
-      // NEW KEY -> Claim for pending execution
-      this.records.set(key, {
+      this.records.set(pk, {
         status: 'PENDING',
         commandType: command.type,
-        payloadHash,
+        requestFingerprint: fingerprint,
         createdAt: new Date().toISOString(),
       });
       return { status: 'CLAIMED' };
     }
 
-    // Verify key is not being reused for a different command type or payload
-    if (existing.commandType !== command.type || existing.payloadHash !== payloadHash) {
-      throw new IdempotencyMismatchError(`Idempotency key "${key}" was previously used for a different command or payload.`);
+    if (existing.commandType !== command.type || existing.requestFingerprint !== fingerprint) {
+      throw new IdempotencyMismatchError(
+        `Idempotency key "${key}" for actor "${actorId}" was previously used for a different command or payload.`
+      );
     }
 
     if (existing.status === 'PENDING') {
-      throw new ConcurrentExecutionError(`Execution for idempotency key "${key}" is currently in progress.`);
+      throw new ConcurrentExecutionError(
+        `Execution for idempotency key "${key}" (actor "${actorId}") is currently in progress.`
+      );
     }
 
     if (existing.status === 'COMPLETED') {
@@ -81,8 +103,7 @@ export class IdempotencyStore {
     }
 
     if (existing.status === 'FAILED') {
-      // Allow retry after failure: update status back to PENDING for the new retry attempt
-      this.records.set(key, {
+      this.records.set(pk, {
         ...existing,
         status: 'PENDING',
         error: undefined,
@@ -97,9 +118,10 @@ export class IdempotencyStore {
   /**
    * Marks execution as completed and caches the result.
    */
-  complete(key, result) {
+  async complete(actorId, key, result) {
     if (!key) return;
-    const existing = this.records.get(key);
+    const pk = this._makeKey(actorId, key);
+    const existing = this.records.get(pk);
     if (existing) {
       existing.status = 'COMPLETED';
       existing.result = result;
@@ -110,9 +132,10 @@ export class IdempotencyStore {
   /**
    * Marks execution as failed.
    */
-  fail(key, error) {
+  async fail(actorId, key, error) {
     if (!key) return;
-    const existing = this.records.get(key);
+    const pk = this._makeKey(actorId, key);
+    const existing = this.records.get(pk);
     if (existing) {
       existing.status = 'FAILED';
       existing.error = error instanceof Error ? { message: error.message, code: error.code } : error;
@@ -120,10 +143,7 @@ export class IdempotencyStore {
     }
   }
 
-  /**
-   * Retrieves the record for inspection.
-   */
-  get(key) {
-    return this.records.get(key) || null;
+  get(actorId, key) {
+    return this.records.get(this._makeKey(actorId, key)) || null;
   }
 }

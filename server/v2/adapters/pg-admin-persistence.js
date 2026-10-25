@@ -96,6 +96,10 @@ class MemoryAdminTxContext {
     this.config = {
       saveRuleset: async (version, status, definitions) => {
         this._assertActive();
+        const existing = await this.config.getRulesetByVersion(version);
+        if (existing && (existing.status === 'APPROVED' || existing.status === 'ARCHIVED')) {
+          throw new Error(`Forbidden Mutation Error: Ruleset version "${version}" is ${existing.status} and immutable.`);
+        }
         this.stagedRulesets.set(version, { version, status, definitions });
       },
       getRulesetByVersion: async (version) => {
