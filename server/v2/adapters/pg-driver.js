@@ -35,10 +35,10 @@ export class PgDriver {
     this.connectionString = connStr;
     if (pool) {
       this.pool = pool;
-      this.ownPool = false; // Externally injected pool -> PgDriver does NOT own/end it
+      this.ownPool = false; // Externally injected pool -> PgDriver does NOT close it
     } else {
       this.pool = new pg.Pool({ connectionString: connStr });
-      this.ownPool = true; // Internally created pool -> PgDriver owns/ends it
+      this.ownPool = true; // Internally created pool -> PgDriver owns and closes it
     }
   }
 
@@ -67,51 +67,69 @@ export class PgDriver {
 
   /**
    * Durably updates outbox record status in database storage.
+   * Clears last_error when status transitions to PUBLISHED.
    */
   async updateOutboxRecordStatus(eventId, { status, attemptCount, lastError, publishedAt }) {
-    await this.pool.query(
-      `UPDATE public.v2_outbox
-       SET status = $2,
-           attempt_count = COALESCE($3, attempt_count),
-           last_error = COALESCE($4, last_error),
-           published_at = COALESCE($5, published_at)
-       WHERE event_id = $1`,
-      [
-        eventId,
-        status,
-        attemptCount !== undefined ? attemptCount : null,
-        lastError || null,
-        publishedAt || null,
-      ]
-    );
+    if (status === 'PUBLISHED') {
+      await this.pool.query(
+        `UPDATE public.v2_outbox
+         SET status = $2,
+             last_error = NULL,
+             published_at = COALESCE($3, NOW())
+         WHERE event_id = $1`,
+        [eventId, status, publishedAt || null]
+      );
+    } else {
+      await this.pool.query(
+        `UPDATE public.v2_outbox
+         SET status = $2,
+             attempt_count = COALESCE($3, attempt_count + 1),
+             last_error = $4
+         WHERE event_id = $1`,
+        [eventId, status, attemptCount !== undefined ? attemptCount : null, lastError || null]
+      );
+    }
   }
 
   /**
-   * Loads committed/retryable outbox records from database storage for post-commit publication.
+   * Safe worker batch claiming using row locking `FOR UPDATE SKIP LOCKED`.
+   * Prevents concurrent background retry workers from publishing the same records.
    */
-  async getRetryableOutboxRecords() {
-    const res = await this.pool.query(
-      `SELECT event_id, event_type, aggregate_type, aggregate_id, actor_id, schema_version, payload, occurred_at, status, attempt_count, last_error, published_at
-       FROM public.v2_outbox
-       WHERE status IN ('COMMITTED_IN_STORAGE', 'PUBLICATION_FAILED_RETRYABLE')
-       ORDER BY created_at ASC`
-    );
+  async claimRetryableOutboxBatch(batchSize = 10) {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const res = await client.query(
+        `SELECT event_id, event_type, aggregate_type, aggregate_id, actor_id, schema_version, payload, occurred_at, status, attempt_count, last_error
+         FROM public.v2_outbox
+         WHERE status IN ('COMMITTED_IN_STORAGE', 'PUBLICATION_FAILED_RETRYABLE')
+         ORDER BY created_at ASC
+         LIMIT $1
+         FOR UPDATE SKIP LOCKED`,
+        [batchSize]
+      );
+      await client.query('COMMIT');
 
-    return res.rows.map(r => ({
-      event: {
-        eventId: r.event_id,
-        eventType: r.event_type,
-        aggregate: { type: r.aggregate_type, id: r.aggregate_id },
-        actor: r.actor_id ? { actorId: r.actor_id } : null,
-        schemaVersion: r.schema_version,
-        payload: r.payload,
-        occurredAt: r.occurred_at,
-      },
-      status: r.status,
-      attemptCount: r.attempt_count,
-      lastError: r.last_error,
-      publishedAt: r.published_at,
-    }));
+      return res.rows.map(r => ({
+        event: {
+          eventId: r.event_id,
+          eventType: r.event_type,
+          aggregate: { type: r.aggregate_type, id: r.aggregate_id },
+          actor: r.actor_id ? { actorId: r.actor_id } : null,
+          schemaVersion: r.schema_version,
+          payload: r.payload,
+          occurredAt: r.occurred_at,
+        },
+        status: r.status,
+        attemptCount: r.attempt_count,
+        lastError: r.last_error,
+      }));
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   async close() {
@@ -127,6 +145,7 @@ export class PgDriver {
 export class PgTxContext {
   constructor(client) {
     this.client = client;
+    this.stagedOutboxRecords = [];
 
     this.featureFlags = {
       set: async (flagKey, enabled) => {
@@ -256,8 +275,22 @@ export class PgTxContext {
     };
 
     this.outbox = {
-      record: async (domainEvent) => {
-        await this.client.query(
+      record: (domainEvent) => {
+        if (!domainEvent || !domainEvent.eventId) {
+          throw new Error('Valid domain event required.');
+        }
+        // Stage in-memory record for post-commit publishing reference
+        const record = {
+          event: domainEvent,
+          status: 'COMMITTED_IN_STORAGE',
+          attemptCount: 0,
+          lastError: null,
+          publishedAt: null,
+        };
+        this.stagedOutboxRecords.push(record);
+
+        // Execute async SQL insert within the active transaction
+        this.client.query(
           `INSERT INTO public.v2_outbox (event_id, event_type, aggregate_type, aggregate_id, actor_id, schema_version, payload, occurred_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
           [
@@ -272,6 +305,7 @@ export class PgTxContext {
           ]
         );
       },
+      getStagedRecords: () => [...this.stagedOutboxRecords],
     };
 
     this.audit = {
@@ -307,9 +341,6 @@ export class PgTxContext {
   }
 }
 
-/**
- * Checks if a connection string appears to point to production storage.
- */
 function isProductionUrl(connStr) {
   if (!connStr) return false;
   const str = connStr.toLowerCase();

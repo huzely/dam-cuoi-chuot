@@ -48,7 +48,7 @@ All existing legacy game systems (`SAVE4.money`, `dcc.c4`, `dcc.c4b`, `dcc.jg`, 
 ## Test Execution Summary
 
 - **Total Test Files in `server/v2/tests/`**: 11
-- **Unit & Security Static Test Cases**: **52 PASS / 0 FAIL** (100% Pass)
+- **Unit & Security Static Test Suite**: **52 PASS / 0 FAIL** (100% Pass)
 - **Integration Test Harness**: **1 HARNESS READY / SKIPPED** (`NOT EXECUTED — TEST/STAGING DATABASE NOT PROVIDED`)
 - **Unit Test Command**: `cd server/v2 && npm run test:unit`
 - **Integration Test Command**: `cd server/v2 && POSTGRES_TEST_URL="..." npm run test:integration`
@@ -65,7 +65,7 @@ All existing legacy game systems (`SAVE4.money`, `dcc.c4`, `dcc.c4b`, `dcc.jg`, 
 8. `pg-schema-migration.test.js` (1 test) — **PASS**
 9. `rbac.test.js` (4 tests) — **PASS**
 10. `security-static.test.js` (7 tests) — **PASS**
-11. `postgres-integration.test.js` (1 integration harness test with 11 subtests) — **SKIPPED / NOT EXECUTED** (`POSTGRES_TEST_URL` absent)
+11. `postgres-integration.test.js` (1 integration harness test with 13 subtests) — **SKIPPED / NOT EXECUTED** (`POSTGRES_TEST_URL` absent)
 
 ---
 

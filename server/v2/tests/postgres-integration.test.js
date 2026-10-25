@@ -98,7 +98,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       const eventId = `evt_pg_${Date.now()}`;
       await pgDriver.withTransaction(async (tx) => {
         await tx.featureFlags.set('EMPLOYMENT_V2', true);
-        await tx.outbox.record(createDomainEvent({
+        tx.outbox.record(createDomainEvent({
           eventId,
           eventType: 'employment.job_accepted',
           aggregate: { type: 'employment', id: 'job_01' },
@@ -121,8 +121,8 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
         await pgDriver.withTransaction(async (tx) => {
           await tx.featureFlags.set('TAX_V2', true);
           // Force outbox write error via duplicate primary key on outbox table
-          await tx.outbox.record({ eventId: 'dup_id', eventType: 'test', aggregate: { type: 't', id: '1' } });
-          await tx.outbox.record({ eventId: 'dup_id', eventType: 'test', aggregate: { type: 't', id: '1' } });
+          tx.outbox.record({ eventId: 'dup_id', eventType: 'test', aggregate: { type: 't', id: '1' } });
+          tx.outbox.record({ eventId: 'dup_id', eventType: 'test', aggregate: { type: 't', id: '1' } });
         });
       });
 
@@ -133,7 +133,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
     await t.test('6. Post-commit publication failure and durable retry status on PostgreSQL', async () => {
       const eventId = `evt_pub_${Date.now()}`;
       await pgDriver.withTransaction(async (tx) => {
-        await tx.outbox.record(createDomainEvent({
+        tx.outbox.record(createDomainEvent({
           eventId,
           eventType: 'festival.booth_entered',
           aggregate: { type: 'booth', id: 'b1' },
@@ -162,9 +162,10 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       const retryResult = await workingPublisher.processRetryableOutbox();
       assert.ok(retryResult.publishedEvents.some(e => e.eventId === eventId));
 
-      const updatedRes = await pool.query(`SELECT status, published_at FROM public.v2_outbox WHERE event_id = $1`, [eventId]);
+      const updatedRes = await pool.query(`SELECT status, published_at, last_error FROM public.v2_outbox WHERE event_id = $1`, [eventId]);
       assert.equal(updatedRes.rows[0].status, 'PUBLISHED');
       assert.ok(updatedRes.rows[0].published_at);
+      assert.equal(updatedRes.rows[0].last_error, null); // Last error cleared on success!
     });
 
     await t.test('7. Admin feature flag + audit atomic commit/rollback on PostgreSQL', async () => {
@@ -370,7 +371,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
     });
 
     await t.test('13. End-to-end production command pipeline execution on PostgreSQL', async () => {
-      const idempotencyStore = new PgIdempotencyStore(pgDriver.pool);
+      const idempotencyStore = new PgIdempotencyStore(pool);
       const actor = { actorId: 'usr_e2e_1' };
       const e2eCmd = createCommand({
         type: 'festival.enter_booth',
