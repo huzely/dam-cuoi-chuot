@@ -21,10 +21,6 @@ export class PgTransactionAdapter {
     await this.db.beginTransaction();
   }
 
-  async recordMutation(mutation) {
-    await this.db.recordMutation(mutation);
-  }
-
   async stageOutboxEvent(domainEvent) {
     await this.db.stageOutboxEvent(domainEvent);
   }
@@ -43,10 +39,6 @@ export class PgTransactionAdapter {
 
   get rolledBack() {
     return this.db.rolledBack;
-  }
-
-  get mutations() {
-    return this.db.mutations || [];
   }
 
   get stagedOutboxEvents() {
@@ -96,7 +88,6 @@ export class MemoryTransactionDriver {
     this.active = false;
     this.committed = false;
     this.rolledBack = false;
-    this.mutations = [];
     this.stagedOutboxEvents = [];
     this.simulateOutboxPersistFailure = false;
   }
@@ -104,11 +95,6 @@ export class MemoryTransactionDriver {
   async beginTransaction() {
     if (this.active) throw new Error('Transaction active');
     this.active = true;
-  }
-
-  async recordMutation(mutation) {
-    if (!this.active) throw new Error('Inactive transaction');
-    this.mutations.push(mutation);
   }
 
   async stageOutboxEvent(domainEvent) {
@@ -129,7 +115,6 @@ export class MemoryTransactionDriver {
     if (!this.active && !this.committed) return;
     this.active = false;
     this.rolledBack = true;
-    this.mutations = [];
     this.stagedOutboxEvents = [];
   }
 }

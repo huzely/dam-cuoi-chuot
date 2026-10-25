@@ -7,7 +7,6 @@ import pg from 'pg';
 import { PgDriver } from '../adapters/pg-driver.js';
 import { PgAdminPersistence } from '../adapters/pg-admin-persistence.js';
 import { PgOutboxPublisher } from '../adapters/pg-outbox.js';
-import { PgIdempotencyStore } from '../adapters/pg-idempotency.js';
 import { AdminService, ADMIN_COMMAND_TYPES } from '../domains/admin/service.js';
 import { QTV_ROLES } from '../core/rbac.js';
 import { createCommand } from '../core/command.js';
@@ -144,7 +143,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
         throw new Error('Post-commit message transport unreachable');
       });
 
-      const records = await pgDriver.getRetryableOutboxRecords();
+      const records = await pgDriver.claimRetryableOutboxBatch(10);
       const targetRecord = records.find(r => r.event.eventId === eventId);
       assert.ok(targetRecord);
 
@@ -157,7 +156,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(statusRes.rows[0].attempt_count, 1);
       assert.equal(statusRes.rows[0].last_error, 'Post-commit message transport unreachable');
 
-      // Retry with working publisher succeeds
+      // Retry with working publisher succeeds and clears last_error
       const workingPublisher = new PgOutboxPublisher(pgDriver, async () => {});
       const retryResult = await workingPublisher.processRetryableOutbox();
       assert.ok(retryResult.publishedEvents.some(e => e.eventId === eventId));
@@ -168,7 +167,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(updatedRes.rows[0].last_error, null); // Last error cleared on success!
     });
 
-    await t.test('7. Admin feature flag + audit atomic commit/rollback on PostgreSQL', async () => {
+    await t.test('7. Admin feature flag + audit atomic commit on PostgreSQL', async () => {
       const superAdmin = { actorId: 'admin_pg_1', role: QTV_ROLES.SUPER_ADMIN };
 
       // Successful atomic admin mutation
@@ -191,23 +190,27 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(auditRes.rows[0].reason, 'Live PostgreSQL rollout test');
     });
 
-    await t.test('8. Admin audit failure rolls back feature flag mutation on PostgreSQL', async () => {
-      const invalidAdmin = { actorId: 'admin_pg_invalid', role: QTV_ROLES.SUPPORT };
+    await t.test('8. Real Admin Audit Failure Rolls Back Feature Flag Mutation on PostgreSQL', async () => {
+      const superAdmin = { actorId: 'admin_pg_rollback_test', role: QTV_ROLES.SUPER_ADMIN };
 
-      // SUPPORT role attempting feature flag change fails authorization inside transaction
+      // Set flag initial state
+      await pgDriver.withTransaction(async (tx) => {
+        await tx.featureFlags.set('THEFT_V2', false);
+      });
+
+      // Force audit failure by attempting invalid NULL action in raw SQL query inside transaction
       await assert.rejects(async () => {
-        await adminService.executeAdminCommand({
-          adminActor: invalidAdmin,
-          command: createCommand({
-            type: ADMIN_COMMAND_TYPES.FEATURE_FLAG_SET,
-            actor: invalidAdmin,
-            payload: { flagKey: 'CARD_WAGER', enabled: true, reason: 'Unauthorized flag attempt' },
-          }),
+        await pgDriver.withTransaction(async (tx) => {
+          await tx.featureFlags.set('THEFT_V2', true);
+          // Force DB NOT NULL constraint violation on v2_admin_audit_logs table
+          await tx.client.query(
+            `INSERT INTO public.v2_admin_audit_logs (event_id, admin_actor_id, admin_role, action, reason) VALUES ('a_err', 'admin_1', 'SUPER_ADMIN', NULL, 'fail')`
+          );
         });
-      }, /Permission Denied/);
+      });
 
-      // Verify CARD_WAGER flag was not modified
-      const flagVal = await pgDriver.withTransaction(async (tx) => tx.featureFlags.get('CARD_WAGER'));
+      // Verify THEFT_V2 flag was NOT changed (rolled back!)
+      const flagVal = await pgDriver.withTransaction(async (tx) => tx.featureFlags.get('THEFT_V2'));
       assert.equal(flagVal, false);
     });
 
@@ -370,8 +373,39 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       }
     });
 
-    await t.test('13. End-to-end production command pipeline execution on PostgreSQL', async () => {
-      const idempotencyStore = new PgIdempotencyStore(pool);
+    await t.test('13. Real retry worker outbox batch concurrency with SKIP LOCKED on PostgreSQL', async () => {
+      const event1Id = `evt_worker_1_${Date.now()}`;
+      const event2Id = `evt_worker_2_${Date.now()}`;
+
+      await pgDriver.withTransaction(async (tx) => {
+        tx.outbox.record(createDomainEvent({
+          eventId: event1Id,
+          eventType: 'festival.booth_entered',
+          aggregate: { type: 'booth', id: 'b1' },
+        }));
+        tx.outbox.record(createDomainEvent({
+          eventId: event2Id,
+          eventType: 'festival.booth_entered',
+          aggregate: { type: 'booth', id: 'b2' },
+        }));
+      });
+
+      // Two concurrent workers claim batches of 1 record simultaneously
+      const [batch1, batch2] = await Promise.all([
+        pgDriver.claimRetryableOutboxBatch(1),
+        pgDriver.claimRetryableOutboxBatch(1),
+      ]);
+
+      assert.equal(batch1.length, 1);
+      assert.equal(batch2.length, 1);
+
+      // Verify each worker claimed a DIFFERENT outbox event (no duplicate worker claims!)
+      const claimedEvent1 = batch1[0].event.eventId;
+      const claimedEvent2 = batch2[0].event.eventId;
+      assert.notEqual(claimedEvent1, claimedEvent2);
+    });
+
+    await t.test('14. End-to-end production command pipeline execution and replay on PostgreSQL', async () => {
       const actor = { actorId: 'usr_e2e_1' };
       const e2eCmd = createCommand({
         type: 'festival.enter_booth',
@@ -384,7 +418,6 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       const pipelineRes = await executePipeline({
         command: e2eCmd,
         pgDriver,
-        idempotencyStore,
         handlerFn: async ({ command, tx, outbox }) => {
           await tx.featureFlags.set('FORTUNE_V2', true);
           outbox.record(createDomainEvent({
@@ -403,7 +436,6 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       const replayRes = await executePipeline({
         command: e2eCmd,
         pgDriver,
-        idempotencyStore,
         handlerFn: async () => {
           throw new Error('Handler should not execute on replay');
         },
@@ -415,6 +447,5 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
 
   } finally {
     await pgDriver.close();
-    await pool.end();
   }
 });

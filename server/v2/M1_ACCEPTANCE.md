@@ -65,7 +65,7 @@ All existing legacy game systems (`SAVE4.money`, `dcc.c4`, `dcc.c4b`, `dcc.jg`, 
 8. `pg-schema-migration.test.js` (1 test) — **PASS**
 9. `rbac.test.js` (4 tests) — **PASS**
 10. `security-static.test.js` (7 tests) — **PASS**
-11. `postgres-integration.test.js` (1 integration harness test with 13 subtests) — **SKIPPED / NOT EXECUTED** (`POSTGRES_TEST_URL` absent)
+11. `postgres-integration.test.js` (1 integration harness test with 14 subtests) — **SKIPPED / NOT EXECUTED** (`POSTGRES_TEST_URL` absent)
 
 ---
 

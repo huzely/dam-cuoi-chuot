@@ -107,7 +107,6 @@ test('PgTransactionAdapter & PgUnitOfWork: atomic state + outbox commit with exp
   const uow = new PgUnitOfWork(tx, outbox);
 
   const result = await uow.execute(async (activeTx, activeOutbox) => {
-    await activeTx.recordMutation({ table: 'festival_visitors', action: 'INSERT' });
     activeOutbox.record(createDomainEvent({
       eventType: 'festival.booth_entered',
       aggregate: { type: 'festival_booth', id: 'b_99' },
@@ -117,7 +116,6 @@ test('PgTransactionAdapter & PgUnitOfWork: atomic state + outbox commit with exp
 
   assert.equal(result.status, 'SUCCESS');
   assert.equal(tx.committed, true);
-  assert.equal(tx.mutations.length, 1);
   assert.equal(tx.stagedOutboxEvents.length, 1);
   assert.equal(outbox.getCommittedOutboxRecords().length, 1);
 });

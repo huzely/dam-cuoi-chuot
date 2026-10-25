@@ -55,6 +55,10 @@ export class PgDriver {
       await client.query('BEGIN');
       const txContext = new PgTxContext(client);
       const result = await workFn(txContext);
+
+      // Flush and AWAIT all staged outbox events inside active transaction before COMMIT
+      await txContext.flushStagedOutbox();
+
       await client.query('COMMIT');
       return result;
     } catch (err) {
@@ -75,7 +79,8 @@ export class PgDriver {
         `UPDATE public.v2_outbox
          SET status = $2,
              last_error = NULL,
-             published_at = COALESCE($3, NOW())
+             published_at = COALESCE($3, NOW()),
+             updated_at = NOW()
          WHERE event_id = $1`,
         [eventId, status, publishedAt || null]
       );
@@ -84,7 +89,8 @@ export class PgDriver {
         `UPDATE public.v2_outbox
          SET status = $2,
              attempt_count = COALESCE($3, attempt_count + 1),
-             last_error = $4
+             last_error = $4,
+             updated_at = NOW()
          WHERE event_id = $1`,
         [eventId, status, attemptCount !== undefined ? attemptCount : null, lastError || null]
       );
@@ -93,21 +99,39 @@ export class PgDriver {
 
   /**
    * Safe worker batch claiming using row locking `FOR UPDATE SKIP LOCKED`.
-   * Prevents concurrent background retry workers from publishing the same records.
+   * Transitions claimed rows to 'PUBLISHING' with lease timestamp.
+   * Includes stale lease recovery for rows in 'PUBLISHING' state older than 5 minutes.
    */
   async claimRetryableOutboxBatch(batchSize = 10) {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
+
+      // Select and lock available or stale outbox rows
       const res = await client.query(
         `SELECT event_id, event_type, aggregate_type, aggregate_id, actor_id, schema_version, payload, occurred_at, status, attempt_count, last_error
          FROM public.v2_outbox
          WHERE status IN ('COMMITTED_IN_STORAGE', 'PUBLICATION_FAILED_RETRYABLE')
+            OR (status = 'PUBLISHING' AND updated_at < NOW() - INTERVAL '5 minutes')
          ORDER BY created_at ASC
          LIMIT $1
          FOR UPDATE SKIP LOCKED`,
         [batchSize]
       );
+
+      const eventIds = res.rows.map(r => r.event_id);
+
+      if (eventIds.length > 0) {
+        // Transition claimed rows to 'PUBLISHING' durably inside transaction
+        await client.query(
+          `UPDATE public.v2_outbox
+           SET status = 'PUBLISHING',
+               updated_at = NOW()
+           WHERE event_id = ANY($1::text[])`,
+          [eventIds]
+        );
+      }
+
       await client.query('COMMIT');
 
       return res.rows.map(r => ({
@@ -120,7 +144,7 @@ export class PgDriver {
           payload: r.payload,
           occurredAt: r.occurred_at,
         },
-        status: r.status,
+        status: 'PUBLISHING',
         attemptCount: r.attempt_count,
         lastError: r.last_error,
       }));
@@ -145,7 +169,7 @@ export class PgDriver {
 export class PgTxContext {
   constructor(client) {
     this.client = client;
-    this.stagedOutboxRecords = [];
+    this.stagedOutboxEvents = [];
 
     this.featureFlags = {
       set: async (flagKey, enabled) => {
@@ -279,33 +303,17 @@ export class PgTxContext {
         if (!domainEvent || !domainEvent.eventId) {
           throw new Error('Valid domain event required.');
         }
-        // Stage in-memory record for post-commit publishing reference
-        const record = {
-          event: domainEvent,
+        this.stagedOutboxEvents.push(domainEvent);
+      },
+      getStagedRecords: () => {
+        return this.stagedOutboxEvents.map(evt => ({
+          event: evt,
           status: 'COMMITTED_IN_STORAGE',
           attemptCount: 0,
           lastError: null,
           publishedAt: null,
-        };
-        this.stagedOutboxRecords.push(record);
-
-        // Execute async SQL insert within the active transaction
-        this.client.query(
-          `INSERT INTO public.v2_outbox (event_id, event_type, aggregate_type, aggregate_id, actor_id, schema_version, payload, occurred_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
-          [
-            domainEvent.eventId,
-            domainEvent.eventType,
-            domainEvent.aggregate.type,
-            domainEvent.aggregate.id,
-            domainEvent.actor?.actorId || null,
-            domainEvent.schemaVersion || '1.0.0',
-            JSON.stringify(domainEvent.payload || {}),
-            domainEvent.occurredAt || new Date().toISOString(),
-          ]
-        );
+        }));
       },
-      getStagedRecords: () => [...this.stagedOutboxRecords],
     };
 
     this.audit = {
@@ -338,6 +346,29 @@ export class PgTxContext {
         return auditRecord;
       },
     };
+  }
+
+  /**
+   * Flushes all staged outbox events to PostgreSQL, awaiting every SQL INSERT.
+   * Called by PgDriver before COMMIT inside withTransaction.
+   */
+  async flushStagedOutbox() {
+    for (const evt of this.stagedOutboxEvents) {
+      await this.client.query(
+        `INSERT INTO public.v2_outbox (event_id, event_type, aggregate_type, aggregate_id, actor_id, schema_version, payload, occurred_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+        [
+          evt.eventId,
+          evt.eventType,
+          evt.aggregate.type,
+          evt.aggregate.id,
+          evt.actor?.actorId || null,
+          evt.schemaVersion || '1.0.0',
+          JSON.stringify(evt.payload || {}),
+          evt.occurredAt || new Date().toISOString(),
+        ]
+      );
+    }
   }
 }
 
