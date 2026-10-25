@@ -2,11 +2,11 @@
  * Command Execution Pipeline Primitive for V2.
  *
  * Flow:
- * Command -> Validation -> Idempotency Check -> Domain Action -> Unit of Work (DB Tx + Outbox Event) -> Commit
+ * Command -> Validation -> Idempotency Check -> Domain Action -> Unit of Work (DB Tx containing Mutations + Outbox Persist) -> Commit -> Async Outbox Publication
  */
 
 import { TransactionContext, UnitOfWork } from './transaction.js';
-import { OutboxRecorder } from './outbox.js';
+import { OutboxRecorder, OutboxPublisher } from './outbox.js';
 
 export async function executePipeline({
   command,
@@ -14,6 +14,8 @@ export async function executePipeline({
   handlerFn,
   idempotencyStore = null,
   featureFlags = null,
+  publisherFn = null,
+  txContextOverride = null,
 }) {
   if (!command || !command.type) {
     throw new Error('Pipeline requires a valid command.');
@@ -36,8 +38,8 @@ export async function executePipeline({
     }
   }
 
-  // 3. Domain action & Unit of Work (DB Transaction + Outbox Event)
-  const tx = new TransactionContext();
+  // 3. Domain action & Unit of Work (Atomic DB Transaction containing State Mutations + Outbox Persistence)
+  const tx = txContextOverride || new TransactionContext();
   const outbox = new OutboxRecorder();
   const uow = new UnitOfWork(tx, outbox);
 
@@ -50,7 +52,13 @@ export async function executePipeline({
       });
     });
 
-    // 4. Record idempotency completion
+    // At this point, tx.committed === true and outbox records are committed in DB storage.
+
+    // 4. Post-commit Outbox Event Publication
+    const publisher = new OutboxPublisher(publisherFn || (async () => {}));
+    const publishResult = await publisher.publishCommitted(outbox.getCommittedOutboxRecords());
+
+    // 5. Record idempotency completion
     if (idempotencyStore && idempotencyKey) {
       idempotencyStore.complete(idempotencyKey, result);
     }
@@ -58,7 +66,9 @@ export async function executePipeline({
     return {
       replayed: false,
       result,
-      committedEvents: outbox.getCommittedEvents(),
+      committedOutboxRecords: outbox.getCommittedOutboxRecords(),
+      publishedEvents: publishResult.publishedEvents,
+      publicationErrors: publishResult.publicationErrors,
     };
   } catch (err) {
     // Record idempotency failure

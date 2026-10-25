@@ -14,7 +14,7 @@ const FORBIDDEN_GENERIC_COMMANDS = new Set([
  *
  * @param {Object} params
  * @param {string} params.type - Domain command type (e.g., 'festival.enter_booth')
- * @param {Object} params.actor - Trusted authenticated actor supplied by server auth context
+ * @param {Object} params.actor - Trusted authenticated actor supplied by trusted server auth context
  * @param {string} params.actor.actorId - Authenticated user ID from trusted auth context
  * @param {string} [params.actor.role] - Authenticated role (e.g. 'PLAYER', 'ADMIN')
  * @param {string} [params.commandId] - Unique command/request ID
@@ -44,11 +44,10 @@ export function createCommand({
     throw new Error('Authenticated actor with a valid actorId supplied by trusted server context is required.');
   }
 
-  // Safety check: payload must not override or dictate authenticated actor identity
-  if (payload && (payload.userId || payload.actorId)) {
-    if (payload.userId !== actor.actorId && payload.actorId !== actor.actorId) {
-      throw new Error('Security Error: Command payload userId/actorId mismatch with trusted authenticated actor.');
-    }
+  // Security hardening: Command payloads must not specify actor keys (userId or actorId).
+  // Explicit target names such as targetUserId or recipientUserId must be used when semantically needed.
+  if (payload && (Object.prototype.hasOwnProperty.call(payload, 'userId') || Object.prototype.hasOwnProperty.call(payload, 'actorId'))) {
+    throw new Error('Security Error: Command payload must not specify userId or actorId. Use explicit domain names like targetUserId or recipientUserId.');
   }
 
   return Object.freeze({
