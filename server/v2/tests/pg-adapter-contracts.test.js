@@ -215,7 +215,7 @@ test('PgAdminAuditLogger: creates append-only audit record via injected audit dr
     reason: 'Violated terms of service',
   });
 
-  assert.equal(auditRecord.adminActorId, 'admin_1');
+  assert.equal(auditRecord.adminActor.actorId, 'admin_1');
   const storedRecords = await auditDriver.getAuditRecords();
   assert.equal(storedRecords.length, 1);
   assert.equal(storedRecords[0].action, 'admin.user.suspend');

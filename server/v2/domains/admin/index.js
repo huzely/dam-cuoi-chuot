@@ -2,11 +2,12 @@
  * V2 Admin / Operations Domain Contract Boundary
  */
 import { FEATURE_FLAGS } from '../../core/feature-flags.js';
+import { ADMIN_COMMAND_TYPES } from './service.js';
 
 export const DOMAIN_NAME = 'admin';
 
 export const COMMAND_TYPES = Object.freeze({
-  EXECUTE_ADMIN_ACTION: 'admin.execute_action',
+  ...ADMIN_COMMAND_TYPES,
 });
 
 export const EVENT_TYPES = Object.freeze({
@@ -25,3 +26,7 @@ export function getDomainMetadata() {
     requiredFlags: [...REQUIRED_FEATURE_FLAGS],
   };
 }
+
+export { AdminService } from './service.js';
+export { KillSwitchService, KillSwitchActiveError } from './kill-switch.js';
+export { FeaturePrerequisiteRegistry } from './prerequisites.js';

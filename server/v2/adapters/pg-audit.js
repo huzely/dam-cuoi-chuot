@@ -4,7 +4,7 @@
  * Enforces least-privilege role permissions and audit record structure.
  */
 
-import { assertPermission } from '../core/rbac.js';
+import { assertPermission, createAdminAuditEvent } from '../core/rbac.js';
 import { MissingDatabaseDriverError } from './pg-idempotency.js';
 
 export class PgAdminAuditLogger {
@@ -28,6 +28,7 @@ export class PgAdminAuditLogger {
    * @param {Object} [params.targetRef] - Target entity reference
    * @param {string} [params.reason] - Explanation for admin action
    * @param {string} [params.commandId] - Associated command ID
+   * @param {Object} [params.metadata] - Audit metadata
    */
   async logAuditEvent({
     adminActor,
@@ -35,6 +36,7 @@ export class PgAdminAuditLogger {
     targetRef = null,
     reason = '',
     commandId = null,
+    metadata = {},
   }) {
     if (!adminActor || !adminActor.actorId || !adminActor.role) {
       throw new Error('Audit logger requires an authenticated admin actor object with actorId and role.');
@@ -43,18 +45,22 @@ export class PgAdminAuditLogger {
     // Verify permission
     assertPermission(adminActor.role, action);
 
-    const auditRecord = {
-      eventId: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+    const auditRecord = createAdminAuditEvent({
+      adminActor,
+      action,
+      targetRef,
+      reason,
+      metadata,
+    });
+
+    const dbRecord = {
+      ...auditRecord,
       adminActorId: adminActor.actorId,
       adminRole: adminActor.role,
-      action,
-      targetRef: targetRef ? { ...targetRef } : null,
-      reason,
       commandId,
-      createdAt: new Date().toISOString(),
     };
 
-    await this.db.insertAuditRecord(auditRecord);
+    await this.db.insertAuditRecord(dbRecord);
     return auditRecord;
   }
 }
