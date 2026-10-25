@@ -55,14 +55,14 @@ export class PgOutboxRecorder {
 export class PgOutboxPublisher {
   /**
    * @param {Object} dbClient - Production DB driver or explicit test memory driver
-   * @param {Function} [publishFn] - External event publishing transport (e.g. WebSocket / RabbitMQ / EventBridge)
+   * @param {Function} [publishFn] - External event publishing transport
    */
-  constructor(dbClient, publishFn = async () => {}) {
+  constructor(dbClient, publishFn) {
     if (!dbClient) {
       throw new MissingDatabaseDriverError('PgOutboxPublisher');
     }
     this.db = dbClient;
-    this.publishFn = publishFn;
+    this.publishFn = typeof publishFn === 'function' ? publishFn : async () => {};
   }
 
   /**
@@ -81,10 +81,12 @@ export class PgOutboxPublisher {
         const publishedAt = new Date().toISOString();
 
         // Durably update outbox record status to PUBLISHED in DB storage
-        await this.db.updateOutboxRecordStatus(eventId, {
-          status: 'PUBLISHED',
-          publishedAt,
-        });
+        if (this.db && typeof this.db.updateOutboxRecordStatus === 'function') {
+          await this.db.updateOutboxRecordStatus(eventId, {
+            status: 'PUBLISHED',
+            publishedAt,
+          });
+        }
 
         record.status = 'PUBLISHED';
         record.publishedAt = publishedAt;
@@ -94,11 +96,13 @@ export class PgOutboxPublisher {
         const lastError = err.message;
 
         // Durably update outbox record status to PUBLICATION_FAILED_RETRYABLE in DB storage
-        await this.db.updateOutboxRecordStatus(eventId, {
-          status: 'PUBLICATION_FAILED_RETRYABLE',
-          attemptCount,
-          lastError,
-        });
+        if (this.db && typeof this.db.updateOutboxRecordStatus === 'function') {
+          await this.db.updateOutboxRecordStatus(eventId, {
+            status: 'PUBLICATION_FAILED_RETRYABLE',
+            attemptCount,
+            lastError,
+          });
+        }
 
         record.status = 'PUBLICATION_FAILED_RETRYABLE';
         record.attemptCount = attemptCount;
@@ -111,6 +115,17 @@ export class PgOutboxPublisher {
       publishedEvents,
       publicationErrors,
     };
+  }
+
+  /**
+   * Loads pending/failed outbox records from DB storage and attempts publication.
+   */
+  async processRetryableOutbox() {
+    if (!this.db.getRetryableOutboxRecords) {
+      return { publishedEvents: [], publicationErrors: [] };
+    }
+    const retryableRecords = await this.db.getRetryableOutboxRecords();
+    return await this.publishCommitted(retryableRecords);
   }
 }
 
@@ -137,5 +152,15 @@ export class MemoryOutboxDriver {
 
   async getOutboxRecord(eventId) {
     return this.outboxTable.get(eventId) || null;
+  }
+
+  async getRetryableOutboxRecords() {
+    const results = [];
+    for (const record of this.outboxTable.values()) {
+      if (record.status === 'COMMITTED_IN_STORAGE' || record.status === 'PUBLICATION_FAILED_RETRYABLE') {
+        results.push(record);
+      }
+    }
+    return results;
   }
 }

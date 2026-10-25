@@ -61,8 +61,17 @@ export class OutboxRecorder {
  * Post-commit Outbox Publisher Primitive.
  */
 export class OutboxPublisher {
-  constructor(publishFn = async () => {}) {
-    this.publishFn = publishFn;
+  /**
+   * Accepts (dbClient, publishFn) or (publishFn).
+   */
+  constructor(dbClientOrPublishFn, publishFn) {
+    if (typeof dbClientOrPublishFn === 'function') {
+      this.db = null;
+      this.publishFn = dbClientOrPublishFn;
+    } else {
+      this.db = dbClientOrPublishFn || null;
+      this.publishFn = typeof publishFn === 'function' ? publishFn : async () => {};
+    }
   }
 
   /**
@@ -75,14 +84,37 @@ export class OutboxPublisher {
     const publicationErrors = [];
 
     for (const record of outboxRecords) {
+      const eventId = record.event?.eventId;
       try {
         await this.publishFn(record.event);
+        const publishedAt = new Date().toISOString();
+
+        if (this.db && typeof this.db.updateOutboxRecordStatus === 'function') {
+          await this.db.updateOutboxRecordStatus(eventId, {
+            status: 'PUBLISHED',
+            publishedAt,
+          });
+        }
+
         record.status = 'PUBLISHED';
-        record.publishedAt = new Date().toISOString();
+        record.publishedAt = publishedAt;
         publishedEvents.push(record.event);
       } catch (err) {
+        const attemptCount = (record.attemptCount || 0) + 1;
+        const lastError = err.message;
+
+        if (this.db && typeof this.db.updateOutboxRecordStatus === 'function') {
+          await this.db.updateOutboxRecordStatus(eventId, {
+            status: 'PUBLICATION_FAILED_RETRYABLE',
+            attemptCount,
+            lastError,
+          });
+        }
+
         record.status = 'PUBLICATION_FAILED_RETRYABLE';
-        publicationErrors.push({ eventId: record.event.eventId, error: err });
+        record.attemptCount = attemptCount;
+        record.lastError = lastError;
+        publicationErrors.push({ eventId, error: err });
       }
     }
 

@@ -1,6 +1,8 @@
 # Đám Cưới Chuột V2 — Milestone M1 Final Acceptance Report
 
-**Status**: HARNESS READY — LIVE POSTGRES VERIFICATION NOT EXECUTED
+**M1.4 Status**: HARNESS READY — LIVE POSTGRES VERIFICATION NOT EXECUTED
+**M1 Freeze Status**: NOT FROZEN
+**M2 Status**: BLOCKED (Awaiting live PostgreSQL integration test run)
 **Date**: March 2025
 **Version**: 2.0.0-m1.4
 
@@ -46,24 +48,24 @@ All existing legacy game systems (`SAVE4.money`, `dcc.c4`, `dcc.c4b`, `dcc.jg`, 
 ## Test Execution Summary
 
 - **Total Test Files in `server/v2/tests/`**: 11
-- **Unit & Security Static Test Suite**: **52 PASS / 0 FAIL** (100% Pass)
+- **Unit & Security Static Test Cases**: **52 PASS / 0 FAIL** (100% Pass)
 - **Integration Test Harness**: **1 HARNESS READY / SKIPPED** (`NOT EXECUTED — TEST/STAGING DATABASE NOT PROVIDED`)
-- **Unit Test Command**: `cd server/v2 && npm test`
+- **Unit Test Command**: `cd server/v2 && npm run test:unit`
 - **Integration Test Command**: `cd server/v2 && POSTGRES_TEST_URL="..." npm run test:integration`
 
 ### Test Suite Breakdown
 
-1. `admin.test.js` (13 tests) — PASS
-2. `command.test.js` (4 tests) — PASS
-3. `config.test.js` (3 tests) — PASS
-4. `feature-flags.test.js` (3 tests) — PASS
-5. `idempotency.test.js` (4 tests) — PASS
-6. `outbox.test.js` (4 tests) — PASS
-7. `pg-adapter-contracts.test.js` (7 tests) — PASS
-8. `pg-schema-migration.test.js` (1 test) — PASS
-9. `rbac.test.js` (4 tests) — PASS
-10. `security-static.test.js` (7 tests) — PASS
-11. `postgres-integration.test.js` (1 integration harness test) — SKIPPED (`NOT EXECUTED — TEST/STAGING DATABASE NOT PROVIDED`)
+1. `admin.test.js` (13 tests) — **PASS**
+2. `command.test.js` (4 tests) — **PASS**
+3. `config.test.js` (3 tests) — **PASS**
+4. `feature-flags.test.js` (3 tests) — **PASS**
+5. `idempotency.test.js` (4 tests) — **PASS**
+6. `outbox.test.js` (4 tests) — **PASS**
+7. `pg-adapter-contracts.test.js` (7 tests) — **PASS**
+8. `pg-schema-migration.test.js` (1 test) — **PASS**
+9. `rbac.test.js` (4 tests) — **PASS**
+10. `security-static.test.js` (7 tests) — **PASS**
+11. `postgres-integration.test.js` (1 integration harness test with 11 subtests) — **SKIPPED / NOT EXECUTED** (`POSTGRES_TEST_URL` absent)
 
 ---
 
@@ -78,7 +80,7 @@ All existing legacy game systems (`SAVE4.money`, `dcc.c4`, `dcc.c4b`, `dcc.jg`, 
 - **Live PostgreSQL Engine Execution**: **NOT EXECUTED — LIVE VERIFICATION PENDING**. The executable integration test harness (`postgres-integration.test.js`) is fully implemented using `pg` and will execute automatically when `POSTGRES_TEST_URL` is configured in a staging environment.
 
 ### List of Unverified Acceptance Items:
-1. Live PostgreSQL multi-connection lock concurrency under parallel load.
+1. Live PostgreSQL multi-client row lock concurrency under parallel load.
 2. Live Supabase RLS policy execution on a remote Supabase instance.
 3. Live PostgreSQL migration execution against a live PostgreSQL server.
 

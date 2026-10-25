@@ -33,7 +33,13 @@ export class PgDriver {
     }
 
     this.connectionString = connStr;
-    this.pool = pool || new pg.Pool({ connectionString: connStr });
+    if (pool) {
+      this.pool = pool;
+      this.ownPool = false; // Externally injected pool -> PgDriver does NOT own/end it
+    } else {
+      this.pool = new pg.Pool({ connectionString: connStr });
+      this.ownPool = true; // Internally created pool -> PgDriver owns/ends it
+    }
   }
 
   /**
@@ -59,8 +65,57 @@ export class PgDriver {
     }
   }
 
+  /**
+   * Durably updates outbox record status in database storage.
+   */
+  async updateOutboxRecordStatus(eventId, { status, attemptCount, lastError, publishedAt }) {
+    await this.pool.query(
+      `UPDATE public.v2_outbox
+       SET status = $2,
+           attempt_count = COALESCE($3, attempt_count),
+           last_error = COALESCE($4, last_error),
+           published_at = COALESCE($5, published_at)
+       WHERE event_id = $1`,
+      [
+        eventId,
+        status,
+        attemptCount !== undefined ? attemptCount : null,
+        lastError || null,
+        publishedAt || null,
+      ]
+    );
+  }
+
+  /**
+   * Loads committed/retryable outbox records from database storage for post-commit publication.
+   */
+  async getRetryableOutboxRecords() {
+    const res = await this.pool.query(
+      `SELECT event_id, event_type, aggregate_type, aggregate_id, actor_id, schema_version, payload, occurred_at, status, attempt_count, last_error, published_at
+       FROM public.v2_outbox
+       WHERE status IN ('COMMITTED_IN_STORAGE', 'PUBLICATION_FAILED_RETRYABLE')
+       ORDER BY created_at ASC`
+    );
+
+    return res.rows.map(r => ({
+      event: {
+        eventId: r.event_id,
+        eventType: r.event_type,
+        aggregate: { type: r.aggregate_type, id: r.aggregate_id },
+        actor: r.actor_id ? { actorId: r.actor_id } : null,
+        schemaVersion: r.schema_version,
+        payload: r.payload,
+        occurredAt: r.occurred_at,
+      },
+      status: r.status,
+      attemptCount: r.attempt_count,
+      lastError: r.last_error,
+      publishedAt: r.published_at,
+    }));
+  }
+
   async close() {
-    if (this.pool) {
+    if (this.ownPool && this.pool) {
       await this.pool.end();
     }
   }
