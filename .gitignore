@@ -1,2 +1,4 @@
 _test.html
 _chk.html
+node_modules/
+server/v2/node_modules/

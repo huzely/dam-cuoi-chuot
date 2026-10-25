@@ -102,3 +102,18 @@ test('Security Static Scan 5: AdminService does not use generic recordMutation A
     'Architecture Violation: AdminService must not use generic recordMutation({table, action, data}) API'
   );
 });
+
+test('Security Static Scan 6: Integration test harness contains real database queries and no placeholder assertions', () => {
+  const integrationPath = path.join(v2RootDir, 'tests/postgres-integration.test.js');
+  const content = fs.readFileSync(integrationPath, 'utf8');
+
+  assert.ok(
+    content.includes('pool.query') || content.includes('pgDriver.withTransaction'),
+    'Integration test must execute real PostgreSQL queries'
+  );
+  assert.equal(
+    content.includes('assert.ok(true);'),
+    false,
+    'Architecture Violation: Integration test steps must execute real assertions rather than assert.ok(true) placeholders'
+  );
+});

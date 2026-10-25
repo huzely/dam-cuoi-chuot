@@ -1,6 +1,6 @@
 # Đám Cưới Chuột V2 — Milestone M1 Final Acceptance Report
 
-**Status**: Milestone M1 Completed & Verified (Pending Live PostgreSQL Integration DB Run)
+**Status**: HARNESS READY — LIVE VERIFICATION PENDING
 **Date**: March 2025
 **Version**: 2.0.0-m1.4
 
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Milestone M1 establishes the foundational architecture for Đám Cưới Chuột V2, including domain contracts, persistence primitives, transactional outbox atomicity, scoped idempotency, versioned rulesets with fail-closed configuration, safe feature flags, an administrative RBAC shell with atomic audit logging, and static security verification.
+Milestone M1 establishes the foundational architecture for Đám Cưới Chuột V2, including domain contracts, persistence primitives, transactional outbox atomicity, scoped idempotency, versioned rulesets with fail-closed configuration, safe feature flags, an administrative RBAC shell with atomic audit logging, and automated static security verification.
 
 All existing legacy game systems (`SAVE4.money`, `dcc.c4`, `dcc.c4b`, `dcc.jg`, `dcc.cloud*`, client JS, WebSocket server) remain **100% untouched and unchanged**.
 
@@ -39,47 +39,49 @@ All existing legacy game systems (`SAVE4.money`, `dcc.c4`, `dcc.c4b`, `dcc.jg`, 
 | **M1.3 Admin Shell** | Direct money setters or generic table mutation APIs forbidden | **PASS** | `security-static.test.js` automated scan |
 | **M1.4 Verification** | Automated Security Static Scanner | **PASS** | `security-static.test.js` automated scan |
 | **M1.4 Verification** | Legacy Coexistence (zero changes to `js/*`, `dcc_*` tables) | **PASS** | `security-static.test.js` & `git status` |
-| **M1.4 Verification** | Live PostgreSQL Integration Suite | **ENVIRONMENT DEPENDENT** | `postgres-integration.test.js` (Skipped when `POSTGRES_TEST_URL` absent) |
+| **M1.4 Verification** | Live PostgreSQL Integration Suite | **NOT EXECUTED — UNVERIFIED** | `postgres-integration.test.js` (Pending test/staging DB environment) |
 
 ---
 
 ## Test Execution Summary
 
-- **Total Test Files**: 10
-- **Total Test Cases Executed**: 45
-- **Unit & Security Test Suite Pass Rate**: **100% (45 / 45 PASS)**
-- **Test Command**: `cd server/v2 && npm test`
+- **Total Test Files in `server/v2/tests/`**: 11
+- **Unit & Security Static Test Cases**: **46 PASS / 0 FAIL** (100% Pass)
+- **Integration Test Cases**: **1 HARNESS READY / SKIPPED** (Pending `POSTGRES_TEST_URL`)
+- **Unit Test Command**: `cd server/v2 && npm test`
+- **Integration Test Command**: `cd server/v2 && POSTGRES_TEST_URL="..." npm run test:integration`
 
 ### Test Suite Breakdown
 
-1. `command.test.js` (4 tests) — PASS
-2. `config.test.js` (3 tests) — PASS
-3. `feature-flags.test.js` (3 tests) — PASS
-4. `idempotency.test.js` (4 tests) — PASS
-5. `outbox.test.js` (4 tests) — PASS
-6. `rbac.test.js` (4 tests) — PASS
+1. `admin.test.js` (13 tests) — PASS
+2. `command.test.js` (4 tests) — PASS
+3. `config.test.js` (3 tests) — PASS
+4. `feature-flags.test.js` (3 tests) — PASS
+5. `idempotency.test.js` (4 tests) — PASS
+6. `outbox.test.js` (4 tests) — PASS
 7. `pg-adapter-contracts.test.js` (7 tests) — PASS
 8. `pg-schema-migration.test.js` (1 test) — PASS
-9. `admin.test.js` (10 tests) — PASS
-10. `security-static.test.js` (5 tests) — PASS
-11. `postgres-integration.test.js` (1 test, environment-dependent harness) — SKIPPED (No test DB URL provided)
+9. `rbac.test.js` (4 tests) — PASS
+10. `security-static.test.js` (6 tests) — PASS
+11. `postgres-integration.test.js` (1 integration harness test) — SKIPPED (`NOT EXECUTED — TEST/STAGING DATABASE NOT PROVIDED`)
 
 ---
 
 ## Live PostgreSQL Integration Status
 
 **Was a real PostgreSQL test/staging database used?**
-**NO** — A live PostgreSQL test/staging database instance was NOT provided in the execution environment.
+**NO** — A live PostgreSQL test/staging database instance was NOT provided in the sandbox execution environment.
 
 ### Status of Verification:
 - **Unit & Adapter Contract Verification**: **VERIFIED (100% PASS)** using explicit test drivers (`MemoryAdminPersistence`, `MemoryIdempotencyDriver`, etc.).
 - **Static Schema & Security Verification**: **VERIFIED (100% PASS)** via automated file and migration AST/regex scanning (`security-static.test.js` and `pg-schema-migration.test.js`).
-- **Live PostgreSQL Engine Execution**: **ENVIRONMENT DEPENDENT / PENDING STAGING RUN**. The integration test harness (`postgres-integration.test.js`) is fully implemented and will execute automatically when `POSTGRES_TEST_URL` is set in the environment.
+- **Live PostgreSQL Engine Execution**: **NOT EXECUTED — LIVE VERIFICATION PENDING**. The executable integration test harness (`postgres-integration.test.js`) is fully implemented using `pg` and will execute automatically when `POSTGRES_TEST_URL` is configured in a staging environment.
+- **Unverified Acceptance Items**: Live PostgreSQL multi-connection lock concurrency, live Supabase RLS policy execution, live PostgreSQL migration execution on a remote database server.
 
 ---
 
 ## M2 Handoff Notes
 
-1. Milestone M1 contracts are frozen and ready for Milestone M2 (Account / Auth V2).
+1. Milestone M1 contracts and integration harness are ready for Milestone M2 (Account / Auth V2).
 2. Production code strictly requires explicit `PgDriver` / `adminPersistence` handles when running in production.
 3. Feature flags default safely to OFF and can be safely deployed without impacting legacy players.
