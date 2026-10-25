@@ -46,7 +46,7 @@ test('Transactional Outbox: 2. outbox persistence failure before commit -> trans
   });
 
   const tx = new TransactionContext();
-  tx.simulateOutboxPersistFailure = true; // Simulate outbox table write error inside transaction
+  tx.simulateOutboxPersistFailure = true;
 
   await assert.rejects(async () => {
     await executePipeline({

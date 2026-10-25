@@ -29,6 +29,7 @@ export class PgAdminAuditLogger {
    * @param {string} [params.reason] - Explanation for admin action
    * @param {string} [params.commandId] - Associated command ID
    * @param {Object} [params.metadata] - Audit metadata
+   * @param {Object} [params.tx] - Active transaction context for atomic unit-of-work commit
    */
   async logAuditEvent({
     adminActor,
@@ -37,6 +38,7 @@ export class PgAdminAuditLogger {
     reason = '',
     commandId = null,
     metadata = {},
+    tx = null,
   }) {
     if (!adminActor || !adminActor.actorId || !adminActor.role) {
       throw new Error('Audit logger requires an authenticated admin actor object with actorId and role.');
@@ -60,7 +62,18 @@ export class PgAdminAuditLogger {
       commandId,
     };
 
-    await this.db.insertAuditRecord(dbRecord);
+    if (tx) {
+      await tx.recordMutation({
+        table: 'v2_admin_audit_logs',
+        action: 'INSERT',
+        data: dbRecord,
+      });
+    }
+
+    if (this.db) {
+      await this.db.insertAuditRecord(dbRecord);
+    }
+
     return auditRecord;
   }
 }

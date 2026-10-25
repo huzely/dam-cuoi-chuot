@@ -11,7 +11,12 @@ export class TransactionContext {
     this.rolledBack = false;
     this.mutations = [];
     this.stagedOutboxEvents = [];
-    this.simulateOutboxPersistFailure = false; // Testing hook for outbox persistence failure before commit
+    this.commitHooks = [];
+    this.simulateOutboxPersistFailure = false;
+  }
+
+  onCommit(fn) {
+    this.commitHooks.push(fn);
   }
 
   async begin() {
@@ -44,6 +49,9 @@ export class TransactionContext {
     }
     this.active = false;
     this.committed = true;
+    for (const hook of this.commitHooks) {
+      await hook();
+    }
   }
 
   async rollback() {
@@ -52,6 +60,7 @@ export class TransactionContext {
     this.rolledBack = true;
     this.mutations = [];
     this.stagedOutboxEvents = [];
+    this.commitHooks = [];
   }
 }
 

@@ -15,6 +15,11 @@ export class PgTransactionAdapter {
       throw new MissingDatabaseDriverError('PgTransactionAdapter');
     }
     this.db = dbClient;
+    this.commitHooks = [];
+  }
+
+  onCommit(fn) {
+    this.commitHooks.push(fn);
   }
 
   async begin() {
@@ -31,10 +36,14 @@ export class PgTransactionAdapter {
 
   async commit() {
     await this.db.commitTransaction();
+    for (const hook of this.commitHooks) {
+      await hook();
+    }
   }
 
   async rollback() {
     await this.db.rollbackTransaction();
+    this.commitHooks = [];
   }
 
   get committed() {

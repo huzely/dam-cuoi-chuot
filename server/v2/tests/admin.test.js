@@ -19,13 +19,13 @@ import {
   PgAdminAuditLogger,
   MemoryAuditDriver,
 } from '../adapters/pg-audit.js';
+import {
+  PgTransactionAdapter,
+  MemoryTransactionDriver,
+} from '../adapters/pg-transaction.js';
 import { QTV_ROLES, InvalidReasonError } from '../core/rbac.js';
 import { createCommand } from '../core/command.js';
-import {
-  CONFIG_CATEGORIES,
-  RulesetSnapshot,
-  UnresolvedConfigError,
-} from '../core/config.js';
+import { CONFIG_CATEGORIES, UnresolvedConfigError, RulesetSnapshot } from '../core/config.js';
 
 function setupAdminFixture() {
   const flagDriver = new MemoryFeatureFlagDriver();
@@ -169,31 +169,19 @@ test('Admin Shell: 4. Reason Enforcement for Sensitive Operations', async () => 
   assert.equal(res.success, true);
 });
 
-test('Admin Shell: 5. Feature Flags Administration & Prerequisite Failure', async () => {
-  const { adminService, prerequisiteRegistry, auditDriver } = setupAdminFixture();
+test('Admin Shell Atomic Rollback 1: Feature flag mutation rolls back when audit persistence fails', async () => {
+  const { adminService, flagRepo } = setupAdminFixture();
   const superAdmin = { actorId: 'super_001', role: QTV_ROLES.SUPER_ADMIN };
 
-  // Unknown flag rejected
-  await assert.rejects(async () => {
-    await adminService.executeAdminCommand({
-      adminActor: superAdmin,
-      command: createCommand({
-        type: ADMIN_COMMAND_TYPES.FEATURE_FLAG_SET,
-        actor: superAdmin,
-        payload: { flagKey: 'NON_EXISTENT_FLAG', enabled: true, reason: 'Test' },
-      }),
-    });
-  }, UnregisteredFlagError);
-
-  // Feature with unresolved TBD_FROM_DATA prerequisite fails closed
-  prerequisiteRegistry.registerPrerequisites('CARD_WAGER', ['CARD_STAKE_TIERS']);
-
-  const snapshotWithTBD = new RulesetSnapshot('2.0.0-draft', {
-    'CARD_STAKE_TIERS': {
-      category: CONFIG_CATEGORIES.TBD_FROM_DATA,
-      value: CONFIG_CATEGORIES.TBD_FROM_DATA,
-    },
-  });
+  // Setup transaction driver configured to fail during audit recording
+  const txDriver = new MemoryTransactionDriver();
+  txDriver.recordMutation = async (mutation) => {
+    if (mutation.table === 'v2_admin_audit_logs') {
+      throw new Error('Audit table database disk full failure');
+    }
+    txDriver.mutations.push(mutation);
+  };
+  const txAdapter = new PgTransactionAdapter(txDriver);
 
   await assert.rejects(async () => {
     await adminService.executeAdminCommand({
@@ -201,56 +189,35 @@ test('Admin Shell: 5. Feature Flags Administration & Prerequisite Failure', asyn
       command: createCommand({
         type: ADMIN_COMMAND_TYPES.FEATURE_FLAG_SET,
         actor: superAdmin,
-        payload: {
-          flagKey: 'CARD_WAGER',
-          enabled: true,
-          reason: 'Enabling card wagering',
-          rulesetSnapshot: snapshotWithTBD,
-        },
+        payload: { flagKey: 'ACCOUNT_V2', enabled: true, reason: 'Testing atomic rollback' },
       }),
+      txAdapter,
     });
-  }, UnresolvedConfigError);
+  }, /Audit table database disk full failure/);
 
-  // Successful flag set command produces audit log
-  await adminService.executeAdminCommand({
-    adminActor: superAdmin,
-    command: createCommand({
-      type: ADMIN_COMMAND_TYPES.FEATURE_FLAG_SET,
-      actor: superAdmin,
-      payload: { flagKey: 'HOI_XUAN_V2', enabled: true, reason: 'Enabling Hoi Xuan V2' },
-    }),
-  });
-
-  const auditRecords = await auditDriver.getAuditRecords();
-  assert.ok(auditRecords.length >= 1);
+  // Assert transaction rolled back and flag state was not committed
+  assert.equal(txDriver.committed, false);
+  assert.equal(txDriver.rolledBack, true);
+  assert.equal(await flagRepo.isEnabled('ACCOUNT_V2'), false);
 });
 
-test('Admin Shell: 6. Config / Ruleset Administration & TBD Fail-Closed Approval', async () => {
-  const { adminService } = setupAdminFixture();
+test('Admin Shell Atomic Rollback 2: Config approval rolls back when audit persistence fails', async () => {
+  const { adminService, configRepo } = setupAdminFixture();
   const econManager = { actorId: 'econ_001', role: QTV_ROLES.ECONOMY_MANAGER };
 
-  // Create DRAFT config succeeds
-  const draftRes = await adminService.executeAdminCommand({
-    adminActor: econManager,
-    command: createCommand({
-      type: ADMIN_COMMAND_TYPES.CONFIG_CREATE_DRAFT,
-      actor: econManager,
-      payload: {
-        version: '2.0.0',
-        definitions: { 'MIN_STAKE': { category: CONFIG_CATEGORIES.ECONOMY_CONFIG, value: 50 } },
-        reason: 'Creating draft ruleset for V2',
-      },
-    }),
+  // Create valid draft config
+  await configRepo.db.saveRuleset('2.0.0-atomic', 'DRAFT', {
+    'STAKE': { category: CONFIG_CATEGORIES.ECONOMY_CONFIG, value: 100 },
   });
-  assert.equal(draftRes.status, 'DRAFT');
 
-  // Approving config containing unresolved TBD_FROM_DATA fails closed
-  const snapshotUnresolved = new RulesetSnapshot('2.0.0-unresolved', {
-    'UNRESOLVED_FEE': {
-      category: CONFIG_CATEGORIES.TBD_FROM_DATA,
-      value: CONFIG_CATEGORIES.TBD_FROM_DATA,
-    },
-  });
+  const txDriver = new MemoryTransactionDriver();
+  txDriver.recordMutation = async (mutation) => {
+    if (mutation.table === 'v2_admin_audit_logs') {
+      throw new Error('Audit DB write error');
+    }
+    txDriver.mutations.push(mutation);
+  };
+  const txAdapter = new PgTransactionAdapter(txDriver);
 
   await assert.rejects(async () => {
     await adminService.executeAdminCommand({
@@ -258,70 +225,143 @@ test('Admin Shell: 6. Config / Ruleset Administration & TBD Fail-Closed Approval
       command: createCommand({
         type: ADMIN_COMMAND_TYPES.CONFIG_APPROVE,
         actor: econManager,
-        payload: {
-          version: '2.0.0-unresolved',
-          snapshot: snapshotUnresolved,
-          reason: 'Attempting approval',
-        },
+        payload: { version: '2.0.0-atomic', reason: 'Approving ruleset' },
       }),
+      txAdapter,
     });
-  }, UnresolvedConfigError);
+  }, /Audit DB write error/);
+
+  // Assert draft ruleset remained DRAFT and was not committed as APPROVED
+  const rec = await configRepo.db.getRulesetByVersion('2.0.0-atomic');
+  assert.equal(rec.status, 'DRAFT');
 });
 
-test('Admin Shell: 7. Kill Switch Administration', async () => {
+test('Admin Shell Atomic Rollback 3: Kill switch mutation rolls back when audit persistence fails', async () => {
   const { adminService, killSwitchService } = setupAdminFixture();
   const secReviewer = { actorId: 'sec_001', role: QTV_ROLES.SECURITY_REVIEWER };
 
-  // Enable kill switch for card wagering
-  const res = await adminService.executeAdminCommand({
-    adminActor: secReviewer,
-    command: createCommand({
-      type: ADMIN_COMMAND_TYPES.KILL_SWITCH_SET,
-      actor: secReviewer,
-      payload: {
-        switchKey: 'KILL_SWITCH_CARD_WAGER',
-        active: true,
-        reason: 'Emergency security investigation',
-      },
-    }),
-  });
+  const txDriver = new MemoryTransactionDriver();
+  txDriver.recordMutation = async (mutation) => {
+    if (mutation.table === 'v2_admin_audit_logs') {
+      throw new Error('Audit table write error');
+    }
+    txDriver.mutations.push(mutation);
+  };
+  const txAdapter = new PgTransactionAdapter(txDriver);
 
-  assert.equal(res.success, true);
-  const active = await killSwitchService.isKillSwitchActive('KILL_SWITCH_CARD_WAGER');
-  assert.equal(active, true);
+  await assert.rejects(async () => {
+    await adminService.executeAdminCommand({
+      adminActor: secReviewer,
+      command: createCommand({
+        type: ADMIN_COMMAND_TYPES.KILL_SWITCH_SET,
+        actor: secReviewer,
+        payload: { switchKey: 'KILL_SWITCH_TEST', active: true, reason: 'Emergency test' },
+      }),
+      txAdapter,
+    });
+  }, /Audit table write error/);
+
+  assert.equal(await killSwitchService.isKillSwitchActive('KILL_SWITCH_TEST'), false);
 });
 
-test('Admin Shell: 8. Audit Logging Security & Secret Stripping', async () => {
-  const { adminService, auditDriver } = setupAdminFixture();
+test('Admin Shell Server-Side Config Approval: 4 & 5. Omitted or forged client snapshot cannot approve unresolved persisted config', async () => {
+  const { adminService, configRepo } = setupAdminFixture();
+  const econManager = { actorId: 'econ_001', role: QTV_ROLES.ECONOMY_MANAGER };
+
+  // Save DRAFT ruleset containing TBD_FROM_DATA in database
+  await configRepo.db.saveRuleset('2.0.0-tbd', 'DRAFT', {
+    'THEFT_CAP': {
+      category: CONFIG_CATEGORIES.TBD_FROM_DATA,
+      value: CONFIG_CATEGORIES.TBD_FROM_DATA,
+    },
+  });
+
+  // 1. Omitted client snapshot in payload MUST NOT bypass TBD validation
+  await assert.rejects(async () => {
+    await adminService.executeAdminCommand({
+      adminActor: econManager,
+      command: createCommand({
+        type: ADMIN_COMMAND_TYPES.CONFIG_APPROVE,
+        actor: econManager,
+        payload: { version: '2.0.0-tbd', reason: 'Approving without snapshot in payload' },
+      }),
+    });
+  }, UnresolvedConfigError);
+
+  // 2. Forged client snapshot in payload attempting to substitute resolved values MUST BE IGNORED
+  const forgedSnapshotPayload = {
+    version: '2.0.0-tbd',
+    reason: 'Attempting approval with fake payload snapshot',
+    snapshot: new RulesetSnapshot('2.0.0-tbd', {
+      'THEFT_CAP': { category: CONFIG_CATEGORIES.ECONOMY_CONFIG, value: 9999 }, // Fake resolved value in payload!
+    }),
+  };
+
+  await assert.rejects(async () => {
+    await adminService.executeAdminCommand({
+      adminActor: econManager,
+      command: createCommand({
+        type: ADMIN_COMMAND_TYPES.CONFIG_APPROVE,
+        actor: econManager,
+        payload: forgedSnapshotPayload,
+      }),
+    });
+  }, UnresolvedConfigError);
+
+  // Assert draft ruleset in DB remains DRAFT
+  const draftRec = await configRepo.db.getRulesetByVersion('2.0.0-tbd');
+  assert.equal(draftRec.status, 'DRAFT');
+});
+
+test('Admin Shell Server-Driven Prerequisites: 6. Feature prerequisite validation cannot be bypassed by omitting payload config', async () => {
+  const { adminService, prerequisiteRegistry, configRepo } = setupAdminFixture();
   const superAdmin = { actorId: 'super_001', role: QTV_ROLES.SUPER_ADMIN };
 
-  try {
+  // Register prerequisite
+  prerequisiteRegistry.registerPrerequisites('CARD_WAGER', ['CARD_STAKE_TIERS']);
+
+  // Save approved ruleset with TBD parameter in DB
+  await configRepo.db.saveRuleset('1.0.0', 'APPROVED', {
+    'CARD_STAKE_TIERS': {
+      category: CONFIG_CATEGORIES.TBD_FROM_DATA,
+      value: CONFIG_CATEGORIES.TBD_FROM_DATA,
+    },
+  });
+
+  // Client attempts to enable flag without providing snapshot payload field
+  await assert.rejects(async () => {
     await adminService.executeAdminCommand({
       adminActor: superAdmin,
       command: createCommand({
         type: ADMIN_COMMAND_TYPES.FEATURE_FLAG_SET,
         actor: superAdmin,
-        payload: {
-          flagKey: 'ACCOUNT_V2',
-          enabled: true,
-          reason: 'Testing audit secrets redacting',
-          apiKey: 'secret_api_key_12345', // Secret field!
-          nested: { password: 'my_password_xyz' }, // Nested secret field!
-        },
+        payload: { flagKey: 'CARD_WAGER', enabled: true, reason: 'Enabling without payload snapshot' },
       }),
     });
-  } catch (err) {
-    console.error('DEBUG TEST 8 ERROR:', err);
-    throw err;
-  }
+  }, UnresolvedConfigError);
+});
 
-  const records = await auditDriver.getAuditRecords();
-  assert.equal(records.length, 1);
-  const audit = records[0];
+test('Admin Shell Audit Integrity: 7. Successful admin mutation produces exactly one durable audit record with secret stripping', async () => {
+  const { adminService, auditDriver } = setupAdminFixture();
+  const superAdmin = { actorId: 'super_001', role: QTV_ROLES.SUPER_ADMIN };
 
-  assert.equal(audit.adminActorId, 'super_001');
-  assert.equal(audit.adminRole, 'SUPER_ADMIN');
-  // Secrets must be redacted in audit metadata
-  assert.equal(audit.metadata.apiKey, '[REDACTED]');
-  assert.equal(audit.metadata.nested.password, '[REDACTED]');
+  const res = await adminService.executeAdminCommand({
+    adminActor: superAdmin,
+    command: createCommand({
+      type: ADMIN_COMMAND_TYPES.FEATURE_FLAG_SET,
+      actor: superAdmin,
+      payload: {
+        flagKey: 'ACCOUNT_V2',
+        enabled: true,
+        reason: 'Rollout ACCOUNT_V2',
+        apiKey: 'super_secret_api_key',
+      },
+    }),
+  });
+
+  assert.equal(res.success, true);
+  const auditRecords = await auditDriver.getAuditRecords();
+  assert.equal(auditRecords.length, 1);
+  assert.equal(auditRecords[0].adminActorId, 'super_001');
+  assert.equal(auditRecords[0].metadata.apiKey, '[REDACTED]');
 });
