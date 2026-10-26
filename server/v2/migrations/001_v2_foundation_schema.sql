@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS public.v2_outbox (
   attempt_count INT NOT NULL DEFAULT 0,
   last_error TEXT,
   published_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_v2_outbox_pending_pub
