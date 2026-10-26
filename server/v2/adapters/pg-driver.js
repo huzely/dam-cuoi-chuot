@@ -9,6 +9,8 @@ import { MissingDatabaseDriverError, computeCanonicalFingerprint } from './pg-id
 import { IdempotencyMismatchError, ConcurrentExecutionError } from '../core/idempotency.js';
 import { assertPermission, createAdminAuditEvent } from '../core/rbac.js';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export class PgDriver {
   /**
    * @param {Object|string} config - Connection configuration or connection string
@@ -171,6 +173,118 @@ export class PgTxContext {
     this.client = client;
     this.stagedOutboxEvents = [];
     this.allStagedEventsForPublication = [];
+
+    this.accounts = {
+      create: async ({ state = 'ACTIVE' } = {}) => {
+        const res = await this.client.query(
+          `INSERT INTO public.v2_accounts (state)
+           VALUES ($1)
+           RETURNING user_id, state, created_at, updated_at`,
+          [state]
+        );
+        const row = res.rows[0];
+        return {
+          userId: row.user_id,
+          state: row.state,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+      getById: async (userId) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+          return null;
+        }
+        const res = await this.client.query(
+          `SELECT user_id, state, created_at, updated_at
+           FROM public.v2_accounts
+           WHERE user_id = $1::uuid`,
+          [userId]
+        );
+        if (res.rows.length === 0) return null;
+        const row = res.rows[0];
+        return {
+          userId: row.user_id,
+          state: row.state,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+      updateState: async (userId, state) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+          return null;
+        }
+        const res = await this.client.query(
+          `UPDATE public.v2_accounts
+           SET state = $2, updated_at = NOW()
+           WHERE user_id = $1::uuid
+           RETURNING user_id, state, created_at, updated_at`,
+          [userId, state]
+        );
+        if (res.rows.length === 0) return null;
+        const row = res.rows[0];
+        return {
+          userId: row.user_id,
+          state: row.state,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+    };
+
+    this.providerIdentities = {
+      link: async ({ provider, providerSubject, userId }) => {
+        const res = await this.client.query(
+          `INSERT INTO public.v2_provider_identities (provider, provider_subject, user_id, created_at, linked_at)
+           VALUES ($1, $2, $3::uuid, NOW(), NOW())
+           RETURNING provider, provider_subject, user_id, created_at, linked_at`,
+          [provider, providerSubject, userId]
+        );
+        const row = res.rows[0];
+        return {
+          provider: row.provider,
+          providerSubject: row.provider_subject,
+          userId: row.user_id,
+          createdAt: row.created_at,
+          linkedAt: row.linked_at,
+        };
+      },
+      resolve: async (provider, providerSubject) => {
+        const res = await this.client.query(
+          `SELECT provider, provider_subject, user_id, created_at, linked_at
+           FROM public.v2_provider_identities
+           WHERE provider = $1 AND provider_subject = $2`,
+          [provider, providerSubject]
+        );
+        if (res.rows.length === 0) return null;
+        const row = res.rows[0];
+        return {
+          provider: row.provider,
+          providerSubject: row.provider_subject,
+          userId: row.user_id,
+          createdAt: row.created_at,
+          linkedAt: row.linked_at,
+        };
+      },
+      getByUser: async (userId) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+          return [];
+        }
+        const res = await this.client.query(
+          `SELECT provider, provider_subject, user_id, created_at, linked_at
+           FROM public.v2_provider_identities
+           WHERE user_id = $1::uuid
+           ORDER BY created_at ASC`,
+          [userId]
+        );
+        return res.rows.map(row => ({
+          provider: row.provider,
+          providerSubject: row.provider_subject,
+          userId: row.user_id,
+          createdAt: row.created_at,
+          linkedAt: row.linked_at,
+        }));
+      },
+    };
 
     this.featureFlags = {
       set: async (flagKey, enabled) => {

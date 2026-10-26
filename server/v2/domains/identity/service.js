@@ -1,0 +1,203 @@
+/**
+ * V2 Account / Auth Domain Service.
+ * Manages V2 accounts, provider identity mappings, domain invariants,
+ * PostgreSQL concurrency error translation, and transactional outbox events.
+ */
+
+import { MissingDatabaseDriverError } from '../../adapters/pg-idempotency.js';
+import { createDomainEvent } from '../../core/event.js';
+import {
+  ACCOUNT_STATES,
+  EVENT_TYPES,
+  validateAndNormalizeProvider,
+  validateProviderSubject,
+  AccountNotFoundError,
+  DuplicateProviderIdentityError,
+} from './index.js';
+
+export class AccountService {
+  /**
+   * @param {Object} params
+   * @param {Object} params.pgDriver - PostgreSQL Driver adapter (REQUIRED)
+   */
+  constructor({ pgDriver }) {
+    if (!pgDriver) {
+      throw new MissingDatabaseDriverError('AccountService');
+    }
+    this.pgDriver = pgDriver;
+  }
+
+  /**
+   * Creates a new V2 account with an immutable UUID user_id.
+   *
+   * @param {Object} [params]
+   * @param {string} [params.state='ACTIVE'] - Initial account state
+   * @param {Object} [tx] - Optional active transaction handle
+   * @returns {Promise<Object>} Account record
+   */
+  async createAccount(params = {}, tx = null) {
+    const state = params.state || ACCOUNT_STATES.ACTIVE;
+    if (!Object.values(ACCOUNT_STATES).includes(state)) {
+      throw new Error(`Invalid account state "${state}". Allowed states: ACTIVE, SUSPENDED, DISABLED.`);
+    }
+
+    const execute = async (activeTx) => {
+      const account = await activeTx.accounts.create({ state });
+
+      // Record outbox domain event atomically within transaction
+      const event = createDomainEvent({
+        eventType: EVENT_TYPES.ACCOUNT_CREATED,
+        aggregate: { type: 'account', id: account.userId },
+        payload: {
+          userId: account.userId,
+          state: account.state,
+          createdAt: account.createdAt,
+        },
+      });
+      activeTx.outbox.record(event);
+
+      return account;
+    };
+
+    if (tx) {
+      return await execute(tx);
+    }
+    return await this.pgDriver.withTransaction(execute);
+  }
+
+  /**
+   * Retrieves a V2 account by its immutable user_id.
+   *
+   * @param {string} userId - UUID string
+   * @param {Object} [tx] - Optional active transaction handle
+   * @returns {Promise<Object|null>} Account record or null
+   */
+  async getAccountById(userId, tx = null) {
+    if (!userId || typeof userId !== 'string') {
+      return null;
+    }
+
+    const execute = async (activeTx) => {
+      return await activeTx.accounts.getById(userId);
+    };
+
+    if (tx) {
+      return await execute(tx);
+    }
+    return await this.pgDriver.withTransaction(execute);
+  }
+
+  /**
+   * Resolves a provider identity to its owner account user_id.
+   *
+   * @param {string} provider - External provider name (GOOGLE, FACEBOOK, THREADS)
+   * @param {string} providerSubject - Provider stable account ID
+   * @param {Object} [tx] - Optional active transaction handle
+   * @returns {Promise<Object|null>} Provider identity record or null
+   */
+  async resolveProviderIdentity(provider, providerSubject, tx = null) {
+    const normalizedProvider = validateAndNormalizeProvider(provider);
+    const validSubject = validateProviderSubject(providerSubject);
+
+    const execute = async (activeTx) => {
+      return await activeTx.providerIdentities.resolve(normalizedProvider, validSubject);
+    };
+
+    if (tx) {
+      return await execute(tx);
+    }
+    return await this.pgDriver.withTransaction(execute);
+  }
+
+  /**
+   * Links an external provider identity to a V2 account.
+   *
+   * Rules:
+   * - Validates provider against registry (GOOGLE, FACEBOOK, THREADS).
+   * - Validates providerSubject as opaque non-empty string.
+   * - Fails with AccountNotFoundError if target account does not exist.
+   * - If identity is already linked to the exact same account, returns existing identity (idempotent success, no duplicate event).
+   * - If identity is already linked to another account, throws DuplicateProviderIdentityError.
+   * - Maps 23505 PostgreSQL uniqueness violation specifically on provider identity constraint to DuplicateProviderIdentityError.
+   * - Emits identity.provider_linked domain event atomically inside active transaction.
+   *
+   * @param {Object} params
+   * @param {string} params.userId - Target V2 account user_id
+   * @param {string} params.provider - Provider string
+   * @param {string} params.providerSubject - Provider stable account ID
+   * @param {Object} [tx] - Optional active transaction handle
+   * @returns {Promise<Object>} Linked provider identity record
+   */
+  async linkProviderIdentity({ userId, provider, providerSubject }, tx = null) {
+    if (!userId || typeof userId !== 'string') {
+      throw new AccountNotFoundError(userId);
+    }
+
+    const normalizedProvider = validateAndNormalizeProvider(provider);
+    const validSubject = validateProviderSubject(providerSubject);
+
+    const execute = async (activeTx) => {
+      // 1. Verify target account exists
+      const targetAccount = await activeTx.accounts.getById(userId);
+      if (!targetAccount) {
+        throw new AccountNotFoundError(userId);
+      }
+
+      // 2. Check if identity is already linked
+      const existingLink = await activeTx.providerIdentities.resolve(normalizedProvider, validSubject);
+      if (existingLink) {
+        if (existingLink.userId === userId) {
+          // Exact same provider identity linked to exact same account -> Idempotent success (no duplicate event)
+          return existingLink;
+        }
+        // Identity belongs to another account -> throw DuplicateProviderIdentityError
+        throw new DuplicateProviderIdentityError(normalizedProvider, validSubject);
+      }
+
+      // 3. Perform link insertion
+      let linkRecord;
+      try {
+        linkRecord = await activeTx.providerIdentities.link({
+          provider: normalizedProvider,
+          providerSubject: validSubject,
+          userId,
+        });
+      } catch (err) {
+        if (err.code === '23505') {
+          // Check if error constraint corresponds to provider identity uniqueness
+          const constraintName = (err.constraint || '').toLowerCase();
+          const detailStr = (err.detail || '').toLowerCase();
+          if (
+            constraintName.includes('provider') ||
+            constraintName.includes('uq_v2_provider_identities') ||
+            detailStr.includes('provider') ||
+            !constraintName // fallback for memory/mock adapters
+          ) {
+            throw new DuplicateProviderIdentityError(normalizedProvider, validSubject);
+          }
+        }
+        throw err;
+      }
+
+      // 4. Record outbox event atomically
+      const event = createDomainEvent({
+        eventType: EVENT_TYPES.PROVIDER_LINKED,
+        aggregate: { type: 'account', id: userId },
+        payload: {
+          userId,
+          provider: normalizedProvider,
+          providerSubject: validSubject,
+          linkedAt: linkRecord.linkedAt || new Date().toISOString(),
+        },
+      });
+      activeTx.outbox.record(event);
+
+      return linkRecord;
+    };
+
+    if (tx) {
+      return await execute(tx);
+    }
+    return await this.pgDriver.withTransaction(execute);
+  }
+}
