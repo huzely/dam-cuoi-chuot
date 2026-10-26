@@ -8,7 +8,14 @@ import { PgDriver, PgTxContext, assertSafeTestDatabaseUrl } from '../adapters/pg
 import { PgAdminPersistence } from '../adapters/pg-admin-persistence.js';
 import { PgOutboxPublisher } from '../adapters/pg-outbox.js';
 import { AdminService, ADMIN_COMMAND_TYPES } from '../domains/admin/service.js';
-import { AccountService, DuplicateProviderIdentityError, AccountNotFoundError } from '../domains/identity/index.js';
+import {
+  AccountService,
+  TrustedPrincipal,
+  ProviderAssertion,
+  TestProviderVerifier,
+  DuplicateProviderIdentityError,
+  AccountNotFoundError,
+} from '../domains/identity/index.js';
 import { QTV_ROLES } from '../core/rbac.js';
 import { createCommand } from '../core/command.js';
 import { createDomainEvent } from '../core/event.js';
@@ -299,7 +306,28 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(outbox2.rows.length, 1);
     });
 
-    await t.test('9. Real PostgreSQL transaction COMMIT and ROLLBACK', async () => {
+    await t.test('9. Real PostgreSQL linkProviderForPrincipal & verifyAndLinkProvider integration', async () => {
+      const account = await accountService.createAccount();
+      const principal = new TrustedPrincipal({ userId: account.userId, state: account.state });
+      const verifier = new TestProviderVerifier();
+
+      const link = await accountService.verifyAndLinkProvider({
+        principal,
+        provider: 'GOOGLE',
+        credential: 'test_token_GOOGLE_pg_verifier_sub_999',
+        verifier,
+      });
+
+      assert.equal(link.userId, account.userId);
+      assert.equal(link.provider, 'GOOGLE');
+      assert.equal(link.providerSubject, 'pg_verifier_sub_999');
+
+      const resolved = await accountService.resolveProviderIdentity('GOOGLE', 'pg_verifier_sub_999');
+      assert.ok(resolved);
+      assert.equal(resolved.userId, account.userId);
+    });
+
+    await t.test('10. Real PostgreSQL transaction COMMIT and ROLLBACK', async () => {
       // Test COMMIT
       await pgDriver.withTransaction(async (tx) => {
         await tx.featureFlags.set('ACCOUNT_V2', true);
@@ -320,7 +348,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(rolledBackFlag, true);
     });
 
-    await t.test('10. Atomic state mutation + outbox commit/rollback on PostgreSQL', async () => {
+    await t.test('11. Atomic state mutation + outbox commit/rollback on PostgreSQL', async () => {
       const eventId = `evt_pg_${Date.now()}`;
       await pgDriver.withTransaction(async (tx) => {
         await tx.featureFlags.set('EMPLOYMENT_V2', true);
@@ -340,7 +368,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(outboxRes.rows[0].status, 'COMMITTED_IN_STORAGE');
     });
 
-    await t.test('11. Outbox persistence failure before COMMIT rolls back state mutation on PostgreSQL', async () => {
+    await t.test('12. Outbox persistence failure before COMMIT rolls back state mutation on PostgreSQL', async () => {
       const initialFlag = await pgDriver.withTransaction(async (tx) => tx.featureFlags.get('TAX_V2'));
 
       await assert.rejects(async () => {
@@ -356,7 +384,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(finalFlag, initialFlag);
     });
 
-    await t.test('12. Post-commit publication failure and durable retry status on PostgreSQL', async () => {
+    await t.test('13. Post-commit publication failure and durable retry status on PostgreSQL', async () => {
       const eventId = `evt_pub_${Date.now()}`;
       const domainEvent = createDomainEvent({
         eventId,
@@ -401,7 +429,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(updatedRes.rows[0].last_error, null);
     });
 
-    await t.test('13. Admin feature flag + audit atomic commit on PostgreSQL', async () => {
+    await t.test('14. Admin feature flag + audit atomic commit on PostgreSQL', async () => {
       const superAdmin = { actorId: 'admin_pg_1', role: QTV_ROLES.SUPER_ADMIN };
 
       const res = await adminService.executeAdminCommand({
@@ -422,7 +450,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(auditRes.rows[0].reason, 'Live PostgreSQL rollout test');
     });
 
-    await t.test('14. Real Admin Audit Failure Rolls Back Feature Flag Mutation on PostgreSQL', async () => {
+    await t.test('15. Real Admin Audit Failure Rolls Back Feature Flag Mutation on PostgreSQL', async () => {
       const superAdmin = { actorId: 'admin_pg_rollback_test', role: QTV_ROLES.SUPER_ADMIN };
 
       await pgDriver.withTransaction(async (tx) => {
@@ -442,7 +470,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(flagVal, false);
     });
 
-    await t.test('15. Config DRAFT creation, approval, and APPROVED immutability on PostgreSQL', async () => {
+    await t.test('16. Config DRAFT creation, approval, and APPROVED immutability on PostgreSQL', async () => {
       const econManager = { actorId: 'econ_pg_1', role: QTV_ROLES.ECONOMY_MANAGER };
       const configVersion = `2.0.0-pg-${Date.now()}`;
 
@@ -487,7 +515,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       }, /Forbidden Mutation Error/);
     });
 
-    await t.test('16. Durable Kill Switch + audit atomic commit on PostgreSQL', async () => {
+    await t.test('17. Durable Kill Switch + audit atomic commit on PostgreSQL', async () => {
       const secReviewer = { actorId: 'sec_pg_1', role: QTV_ROLES.SECURITY_REVIEWER };
 
       await adminService.executeAdminCommand({
@@ -503,7 +531,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(active, true);
     });
 
-    await t.test('17. Idempotency (actor_id, key) uniqueness, replay, and conflict on PostgreSQL', async () => {
+    await t.test('18. Idempotency (actor_id, key) uniqueness, replay, and conflict on PostgreSQL', async () => {
       const actorA = { actorId: 'actor_pg_A' };
       const actorB = { actorId: 'actor_pg_B' };
       const testKey = `pg_idem_key_${Date.now()}`;
@@ -556,7 +584,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       });
     });
 
-    await t.test('18. Real multi-client PostgreSQL controlled concurrent idempotency claim race', async () => {
+    await t.test('19. Real multi-client PostgreSQL controlled concurrent idempotency claim race', async () => {
       const client1 = await pool.connect();
       const client2 = await pool.connect();
 
@@ -624,7 +652,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       }
     });
 
-    await t.test('19. Real retry worker outbox batch concurrency with SKIP LOCKED on PostgreSQL', async () => {
+    await t.test('20. Real retry worker outbox batch concurrency with SKIP LOCKED on PostgreSQL', async () => {
       const event1Id = `evt_worker_1_${Date.now()}`;
       const event2Id = `evt_worker_2_${Date.now()}`;
 
@@ -654,7 +682,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.notEqual(claimedEvent1, claimedEvent2);
     });
 
-    await t.test('20. End-to-end production command pipeline execution and replay on PostgreSQL', async () => {
+    await t.test('21. End-to-end production command pipeline execution and replay on PostgreSQL', async () => {
       const actor = { actorId: 'usr_e2e_1' };
       const e2eKey = `idem_e2e_${Date.now()}`;
       const e2eCmd = createCommand({

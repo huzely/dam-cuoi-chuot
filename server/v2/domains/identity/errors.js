@@ -37,3 +37,27 @@ export class DuplicateProviderIdentityError extends Error {
     this.providerSubject = providerSubject;
   }
 }
+
+export class InvalidTrustedPrincipalError extends Error {
+  constructor(message = 'Security Error: Valid authenticated server principal with active state is required.') {
+    super(message);
+    this.name = 'InvalidTrustedPrincipalError';
+    this.code = 'INVALID_TRUSTED_PRINCIPAL';
+  }
+}
+
+export class InvalidProviderAssertionError extends Error {
+  constructor(message = 'Security Error: Valid verified provider identity assertion is required.') {
+    super(message);
+    this.name = 'InvalidProviderAssertionError';
+    this.code = 'INVALID_PROVIDER_ASSERTION';
+  }
+}
+
+export class ProviderVerificationRequiredError extends Error {
+  constructor(message = 'Security Error: Raw client input cannot be trusted. Provider verification is required.') {
+    super(message);
+    this.name = 'ProviderVerificationRequiredError';
+    this.code = 'PROVIDER_VERIFICATION_REQUIRED';
+  }
+}

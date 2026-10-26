@@ -14,7 +14,14 @@ import {
   validateProviderSubject,
   AccountNotFoundError,
   DuplicateProviderIdentityError,
+  InvalidTrustedPrincipalError,
+  InvalidProviderAssertionError,
+  ProviderVerificationRequiredError,
 } from './index.js';
+import {
+  TrustedPrincipal,
+  ProviderAssertion,
+} from './verifier.js';
 
 export class AccountService {
   /**
@@ -117,6 +124,7 @@ export class AccountService {
    * - Validates provider against registry (GOOGLE, FACEBOOK, THREADS).
    * - Validates providerSubject as opaque non-empty string.
    * - Fails with AccountNotFoundError if target account does not exist.
+   * - Fails with InvalidTrustedPrincipalError if target account state is not ACTIVE.
    * - If identity is already linked to the exact same account, returns existing identity (idempotent success, no duplicate event).
    * - If identity is already linked to another account, throws DuplicateProviderIdentityError.
    * - Maps 23505 PostgreSQL uniqueness violation ONLY when err.constraint strictly matches PROVIDER_IDENTITY_UNIQUE_CONSTRAINT.
@@ -138,10 +146,13 @@ export class AccountService {
     const validSubject = validateProviderSubject(providerSubject);
 
     const execute = async (activeTx) => {
-      // 1. Verify target account exists
+      // 1. Verify target account exists and is ACTIVE
       const targetAccount = await activeTx.accounts.getById(userId);
       if (!targetAccount) {
         throw new AccountNotFoundError(userId);
+      }
+      if (targetAccount.state !== ACCOUNT_STATES.ACTIVE) {
+        throw new InvalidTrustedPrincipalError(`Target account "${userId}" is in state "${targetAccount.state}" and cannot link provider identities.`);
       }
 
       // 2. Check if identity is already linked
@@ -191,5 +202,50 @@ export class AccountService {
       return await execute(tx);
     }
     return await this.pgDriver.withTransaction(execute);
+  }
+
+  /**
+   * Application-layer use case linking a verified provider identity assertion to a trusted server principal.
+   *
+   * @param {Object} params
+   * @param {TrustedPrincipal} params.principal - Server-established authenticated principal
+   * @param {ProviderAssertion} params.providerAssertion - Verified provider identity assertion
+   * @param {Object} [tx] - Optional active transaction handle
+   * @returns {Promise<Object>} Linked provider identity record
+   */
+  async linkProviderForPrincipal({ principal, providerAssertion }, tx = null) {
+    if (!principal || !(principal instanceof TrustedPrincipal)) {
+      throw new InvalidTrustedPrincipalError();
+    }
+
+    if (!providerAssertion || !(providerAssertion instanceof ProviderAssertion) || !providerAssertion.isVerified) {
+      throw new InvalidProviderAssertionError();
+    }
+
+    return await this.linkProviderIdentity({
+      userId: principal.userId,
+      provider: providerAssertion.provider,
+      providerSubject: providerAssertion.providerSubject,
+    }, tx);
+  }
+
+  /**
+   * Verifies raw credential token using ProviderVerifierPort and links the verified assertion to the principal.
+   *
+   * @param {Object} params
+   * @param {TrustedPrincipal} params.principal
+   * @param {string} params.provider
+   * @param {string} params.credential
+   * @param {Object} params.verifier - Concrete ProviderVerifierPort implementation
+   * @param {Object} [tx]
+   * @returns {Promise<Object>} Linked provider identity record
+   */
+  async verifyAndLinkProvider({ principal, provider, credential, verifier }, tx = null) {
+    if (!verifier || typeof verifier.verifyCredential !== 'function') {
+      throw new ProviderVerificationRequiredError('Valid ProviderVerifierPort instance is required.');
+    }
+
+    const assertion = await verifier.verifyCredential({ provider, credential });
+    return await this.linkProviderForPrincipal({ principal, providerAssertion: assertion }, tx);
   }
 }

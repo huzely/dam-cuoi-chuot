@@ -7,8 +7,17 @@ import {
   InvalidProviderSubjectError,
   AccountNotFoundError,
   DuplicateProviderIdentityError,
+  InvalidTrustedPrincipalError,
+  InvalidProviderAssertionError,
+  ProviderVerificationRequiredError,
 } from './errors.js';
 import { AccountService } from './service.js';
+import {
+  TrustedPrincipal,
+  ProviderAssertion,
+  ProviderVerifierPort,
+  TestProviderVerifier,
+} from './verifier.js';
 
 export const DOMAIN_NAME = 'identity';
 
@@ -96,8 +105,15 @@ export function getDomainMetadata() {
 
 export {
   AccountService,
+  TrustedPrincipal,
+  ProviderAssertion,
+  ProviderVerifierPort,
+  TestProviderVerifier,
   UnsupportedProviderError,
   InvalidProviderSubjectError,
   AccountNotFoundError,
   DuplicateProviderIdentityError,
+  InvalidTrustedPrincipalError,
+  InvalidProviderAssertionError,
+  ProviderVerificationRequiredError,
 };
