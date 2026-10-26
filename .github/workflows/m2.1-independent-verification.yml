@@ -54,3 +54,7 @@ jobs:
       - name: Run live PostgreSQL integration and migration 002 repeat
         working-directory: server/v2
         run: npm run test:integration
+
+      - name: Repeat live PostgreSQL integration on same persistent TEST database
+        working-directory: server/v2
+        run: npm run test:integration
