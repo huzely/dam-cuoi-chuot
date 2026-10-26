@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { PgDriver } from '../adapters/pg-driver.js';
+import { PgDriver, assertSafeTestDatabaseUrl } from '../adapters/pg-driver.js';
 import { PgAdminPersistence } from '../adapters/pg-admin-persistence.js';
 import { PgOutboxPublisher } from '../adapters/pg-outbox.js';
 import { AdminService, ADMIN_COMMAND_TYPES } from '../domains/admin/service.js';
@@ -21,11 +21,51 @@ const migrationPath = path.resolve(__dirname, '../migrations/001_v2_foundation_s
 
 const testDbUrl = process.env.POSTGRES_TEST_URL || process.env.PGDATABASE_TEST_URL || null;
 
-function isProductionDbUrl(url) {
-  if (!url) return false;
-  const str = url.toLowerCase();
-  return str.includes('mamafzllyhbmzyystivo') || (str.includes('supabase.co') && !str.includes('test') && !str.includes('staging'));
-}
+test('Database Safety Guard Unit Tests', (t) => {
+  // A. Known production Supabase + no designation -> BLOCK
+  assert.throws(() => {
+    assertSafeTestDatabaseUrl('postgres://postgres:secret@db.mamafzllyhbmzyystivo.supabase.co:5432/postgres');
+  }, /HARD DENY/);
+
+  // B. Known production Supabase + POSTGRES_IS_TEST_STAGING=true -> STILL BLOCK
+  const origEnv = process.env.POSTGRES_IS_TEST_STAGING;
+  try {
+    process.env.POSTGRES_IS_TEST_STAGING = 'true';
+    assert.throws(() => {
+      assertSafeTestDatabaseUrl('postgres://postgres:secret@db.mamafzllyhbmzyystivo.supabase.co:5432/postgres');
+    }, /HARD DENY/);
+  } finally {
+    process.env.POSTGRES_IS_TEST_STAGING = origEnv;
+  }
+
+  // C. Unknown/generic Supabase + no designation -> BLOCK
+  try {
+    delete process.env.POSTGRES_IS_TEST_STAGING;
+    assert.throws(() => {
+      assertSafeTestDatabaseUrl('postgres://postgres:secret@db.randomproject123.supabase.co:5432/postgres');
+    }, /POSTGRES_IS_TEST_STAGING=true/);
+  } finally {
+    if (origEnv !== undefined) process.env.POSTGRES_IS_TEST_STAGING = origEnv;
+  }
+
+  // D. Dedicated Supabase test DB + POSTGRES_IS_TEST_STAGING=true -> ALLOW
+  try {
+    process.env.POSTGRES_IS_TEST_STAGING = 'true';
+    assert.doesNotThrow(() => {
+      assertSafeTestDatabaseUrl('postgres://postgres:secret@db.dedicatedtestproj.supabase.co:5432/postgres');
+    });
+  } finally {
+    if (origEnv !== undefined) process.env.POSTGRES_IS_TEST_STAGING = origEnv;
+  }
+
+  // E. Malformed/empty URL -> BLOCK
+  assert.throws(() => {
+    assertSafeTestDatabaseUrl('');
+  }, /Connection string is required/);
+  assert.throws(() => {
+    assertSafeTestDatabaseUrl(null);
+  }, /Connection string is required/);
+});
 
 test('PostgreSQL Live Integration Test Harness', async (t) => {
   if (!testDbUrl) {
@@ -37,9 +77,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
     return;
   }
 
-  if (isProductionDbUrl(testDbUrl) && process.env.ALLOW_PRODUCTION_DB_TEST !== 'true') {
-    throw new Error('Database Safety Guard: Refusing to run integration tests against production database URL.');
-  }
+  assertSafeTestDatabaseUrl(testDbUrl);
 
   t.diagnostic(`Connecting to test database: ${testDbUrl.replace(/:[^:@]+@/, ':****@')}`);
 

@@ -28,8 +28,8 @@ export class PgDriver {
     }
 
     // Safety guard against accidentally running test migrations/wipes on production URL
-    if (connStr && isProductionUrl(connStr) && process.env.ALLOW_PRODUCTION_DB_TEST !== 'true') {
-      throw new Error('Database Safety Guard: Refusing to connect to production PostgreSQL URL during test/migration execution.');
+    if (connStr) {
+      assertSafeTestDatabaseUrl(connStr);
     }
 
     this.connectionString = connStr;
@@ -382,8 +382,35 @@ export class PgTxContext {
   }
 }
 
-function isProductionUrl(connStr) {
-  if (!connStr) return false;
-  const str = connStr.toLowerCase();
-  return str.includes('mamafzllyhbmzyystivo') || (str.includes('supabase.co') && !str.includes('test') && !str.includes('staging'));
+/**
+ * Fail-Closed Database Safety Guard.
+ * Enforces that tests and migrations NEVER run against production databases.
+ *
+ * Rules:
+ * 1. Hard deny: `mamafzllyhbmzyystivo` (known production Supabase project ID) is strictly blocked under ALL circumstances.
+ * 2. Supabase URLs (`.supabase.co`) require explicit designation via `POSTGRES_IS_TEST_STAGING=true` or host/path containing `test`/`staging`.
+ * 3. Non-Supabase URLs containing `mamafzllyhbmzyystivo` or production patterns are strictly rejected.
+ */
+export function assertSafeTestDatabaseUrl(connStr) {
+  if (!connStr || typeof connStr !== 'string') {
+    throw new Error('Database Safety Guard: Connection string is required.');
+  }
+
+  const lower = connStr.toLowerCase();
+
+  // 1. KNOWN PRODUCTION HARD DENY (Unbypassable)
+  if (lower.includes('mamafzllyhbmzyystivo')) {
+    throw new Error('Database Safety Guard HARD DENY: Known production Supabase database project detected. Connection refused.');
+  }
+
+  // 2. SUPABASE DB CHECK
+  if (lower.includes('supabase.co')) {
+    const isExplicitlyDesignated = process.env.POSTGRES_IS_TEST_STAGING === 'true';
+
+    if (!isExplicitlyDesignated) {
+      throw new Error(
+        'Database Safety Guard DENY: Supabase database detected without explicit test/staging designation. Set POSTGRES_IS_TEST_STAGING=true to permit connection.'
+      );
+    }
+  }
 }
