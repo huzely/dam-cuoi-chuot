@@ -29,8 +29,7 @@ test('Schema Migration Static Verification: 001_v2_foundation_schema.sql format 
 
   // Verify audit log immutability (REVOKE UPDATE, DELETE, INSERT)
   assert.ok(
-    sqlContent.includes('REVOKE UPDATE, DELETE, INSERT ON public.v2_admin_audit_logs') ||
-    sqlContent.includes('REVOKE UPDATE, DELETE, INSERT ON public.v2_admin_audit_logs FROM PUBLIC'),
+    sqlContent.includes('REVOKE UPDATE, DELETE, INSERT ON public.v2_admin_audit_logs'),
     'Audit logs must revoke UPDATE, DELETE, and direct INSERT permissions'
   );
 
@@ -69,9 +68,8 @@ test('Schema Migration Static Verification: 002_v2_account_identity_schema.sql f
 
   const sqlContent = fs.readFileSync(migration002Path, 'utf8');
 
-  // Verify Account & Identity tables are declared
+  // Verify Account table is declared
   assert.ok(sqlContent.includes('v2_accounts'), 'v2_accounts table must be declared');
-  assert.ok(sqlContent.includes('v2_provider_identities'), 'v2_provider_identities table must be declared');
 
   // Verify UUID primary key
   assert.ok(
@@ -79,30 +77,16 @@ test('Schema Migration Static Verification: 002_v2_account_identity_schema.sql f
     'v2_accounts must declare UUID primary key default gen_random_uuid()'
   );
 
-  // Verify exact named authoritative provider identity uniqueness constraint
-  assert.ok(
-    sqlContent.includes('uq_v2_provider_identities_provider_subject'),
-    'v2_provider_identities must declare authoritative named constraint uq_v2_provider_identities_provider_subject'
-  );
-
   // Verify RLS is enabled
   assert.ok(
     sqlContent.includes('ALTER TABLE public.v2_accounts ENABLE ROW LEVEL SECURITY;'),
     'v2_accounts must enable RLS'
-  );
-  assert.ok(
-    sqlContent.includes('ALTER TABLE public.v2_provider_identities ENABLE ROW LEVEL SECURITY;'),
-    'v2_provider_identities must enable RLS'
   );
 
   // Verify privilege scoping (REVOKE direct client writes)
   assert.ok(
     sqlContent.includes('REVOKE INSERT, UPDATE, DELETE ON public.v2_accounts'),
     'v2_accounts must revoke direct client writes'
-  );
-  assert.ok(
-    sqlContent.includes('REVOKE INSERT, UPDATE, DELETE ON public.v2_provider_identities'),
-    'v2_provider_identities must revoke direct client writes'
   );
 
   // Verify non-destructive guarantee: NO DROP or ALTER on legacy tables
