@@ -92,15 +92,30 @@ test('Security Static Scan 4: Production Pg adapters fail fast without silent me
   }
 });
 
-test('Security Static Scan 5: AdminService does not use generic recordMutation API', () => {
-  const servicePath = path.join(v2RootDir, 'domains/admin/service.js');
-  const content = fs.readFileSync(servicePath, 'utf8');
+test('Security Static Scan 5: Production V2 modules do not expose or invoke generic recordMutation API', () => {
+  const productionTargetDirs = [
+    path.join(v2RootDir, 'adapters'),
+    path.join(v2RootDir, 'domains'),
+    path.join(v2RootDir, 'core'),
+  ];
 
-  assert.equal(
-    content.includes('recordMutation'),
-    false,
-    'Architecture Violation: AdminService must not use generic recordMutation({table, action, data}) API'
-  );
+  let prodFiles = [];
+  for (const dir of productionTargetDirs) {
+    if (fs.existsSync(dir)) {
+      prodFiles = prodFiles.concat(getAllFiles(dir).filter(f => f.endsWith('.js')));
+    }
+  }
+
+  for (const filePath of prodFiles) {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const relativePath = path.relative(v2RootDir, filePath);
+
+    assert.equal(
+      content.includes('recordMutation(') || content.includes('recordMutation:'),
+      false,
+      `Architecture Violation: Generic table mutation API "recordMutation" found in production file ${relativePath}`
+    );
+  }
 });
 
 test('Security Static Scan 6: Integration test harness contains real database queries and no placeholder assertions', () => {

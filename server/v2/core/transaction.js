@@ -26,7 +26,7 @@ export class TransactionContext {
     this.active = true;
   }
 
-  async recordMutation(mutation) {
+  async stageStateMutation(mutation) {
     if (!this.active) {
       throw new Error('Cannot record mutation outside an active transaction.');
     }

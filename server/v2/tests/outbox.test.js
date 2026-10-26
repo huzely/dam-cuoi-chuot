@@ -20,7 +20,7 @@ test('Transactional Outbox: 1. handler/state mutation failure before commit -> s
       command: cmd,
       txContextOverride: tx,
       handlerFn: async ({ tx: activeTx, outbox }) => {
-        await activeTx.recordMutation({ table: 'visitors', action: 'INSERT' });
+        await activeTx.stageStateMutation({ table: 'visitors', action: 'INSERT' });
         outbox.record(createDomainEvent({
           eventType: 'festival.booth_entered',
           aggregate: { type: 'booth', id: 'booth_invalid' },
@@ -53,7 +53,7 @@ test('Transactional Outbox: 2. outbox persistence failure before commit -> trans
       command: cmd,
       txContextOverride: tx,
       handlerFn: async ({ tx: activeTx, outbox }) => {
-        await activeTx.recordMutation({ table: 'visitors', action: 'INSERT' });
+        await activeTx.stageStateMutation({ table: 'visitors', action: 'INSERT' });
         outbox.record(createDomainEvent({
           eventType: 'festival.booth_entered',
           aggregate: { type: 'booth', id: 'booth_1' },
@@ -83,7 +83,7 @@ test('Transactional Outbox: 3. successful commit -> state and persisted outbox b
     command: cmd,
     txContextOverride: tx,
     handlerFn: async ({ tx: activeTx, outbox }) => {
-      await activeTx.recordMutation({ table: 'visitors', action: 'INSERT', data: { boothId: 'booth_ok' } });
+      await activeTx.stageStateMutation({ table: 'visitors', action: 'INSERT', data: { boothId: 'booth_ok' } });
       outbox.record(createDomainEvent({
         eventType: 'festival.booth_entered',
         aggregate: { type: 'booth', id: 'booth_ok' },
@@ -118,7 +118,7 @@ test('Transactional Outbox: 4. publication failure AFTER commit does not roll ba
       throw new Error('Event bus / RabbitMQ down during post-commit publication');
     },
     handlerFn: async ({ tx: activeTx, outbox }) => {
-      await activeTx.recordMutation({ table: 'visitors', action: 'INSERT' });
+      await activeTx.stageStateMutation({ table: 'visitors', action: 'INSERT' });
       outbox.record(createDomainEvent({
         eventType: 'festival.booth_entered',
         aggregate: { type: 'booth', id: 'booth_pub_fail' },

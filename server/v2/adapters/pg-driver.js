@@ -170,6 +170,7 @@ export class PgTxContext {
   constructor(client) {
     this.client = client;
     this.stagedOutboxEvents = [];
+    this.allStagedEventsForPublication = [];
 
     this.featureFlags = {
       set: async (flagKey, enabled) => {
@@ -248,11 +249,18 @@ export class PgTxContext {
         );
 
         if (sel.rows.length === 0) {
-          await this.client.query(
-            `INSERT INTO public.v2_idempotency (actor_id, key, command_type, request_fingerprint, status)
-             VALUES ($1, $2, $3, $4, 'PENDING')`,
-            [actorId, key, command.type, fingerprint]
-          );
+          try {
+            await this.client.query(
+              `INSERT INTO public.v2_idempotency (actor_id, key, command_type, request_fingerprint, status)
+               VALUES ($1, $2, $3, $4, 'PENDING')`,
+              [actorId, key, command.type, fingerprint]
+            );
+          } catch (err) {
+            if (err.code === '23505') {
+              throw new ConcurrentExecutionError(`Execution for key "${key}" is currently in progress.`);
+            }
+            throw err;
+          }
           return { status: 'CLAIMED' };
         }
 
@@ -304,9 +312,10 @@ export class PgTxContext {
           throw new Error('Valid domain event required.');
         }
         this.stagedOutboxEvents.push(domainEvent);
+        this.allStagedEventsForPublication.push(domainEvent);
       },
       getStagedRecords: () => {
-        return this.stagedOutboxEvents.map(evt => ({
+        return this.allStagedEventsForPublication.map(evt => ({
           event: evt,
           status: 'COMMITTED_IN_STORAGE',
           attemptCount: 0,
@@ -353,7 +362,8 @@ export class PgTxContext {
    * Called by PgDriver before COMMIT inside withTransaction.
    */
   async flushStagedOutbox() {
-    for (const evt of this.stagedOutboxEvents) {
+    while (this.stagedOutboxEvents.length > 0) {
+      const evt = this.stagedOutboxEvents.shift();
       await this.client.query(
         `INSERT INTO public.v2_outbox (event_id, event_type, aggregate_type, aggregate_id, actor_id, schema_version, payload, occurred_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,

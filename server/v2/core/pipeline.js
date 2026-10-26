@@ -65,6 +65,9 @@ export async function executePipeline({
         outbox: tx.outbox,
       });
 
+      // Flush and AWAIT all staged outbox events inside active transaction BEFORE marking idempotency complete
+      await tx.flushStagedOutbox();
+
       // Mark idempotency COMPLETED inside the SAME atomic PostgreSQL transaction before COMMIT
       if (idempotencyKey) {
         await tx.idempotency.complete(actorId, idempotencyKey, executionResult);

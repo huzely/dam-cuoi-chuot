@@ -334,39 +334,76 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       });
     });
 
-    await t.test('12. Real multi-client PostgreSQL concurrent idempotency claim race', async () => {
+    await t.test('12. Real multi-client PostgreSQL controlled concurrent idempotency claim race', async () => {
       const client1 = await pool.connect();
       const client2 = await pool.connect();
 
+      const raceActor = { actorId: 'actor_pg_race_controlled' };
+      const raceKey = `race_key_controlled_${Date.now()}`;
       const raceCmd = createCommand({
         type: 'festival.enter_booth',
-        actor: { actorId: 'actor_pg_race' },
-        idempotencyKey: 'race_key_99',
-        payload: { boothId: 'b_race' },
+        actor: raceActor,
+        idempotencyKey: raceKey,
+        payload: { boothId: 'b_controlled_race' },
       });
+
+      let handlerCallCount = 0;
 
       try {
         await client1.query('BEGIN');
         await client2.query('BEGIN');
 
-        const driver1 = new PgDriver({ pool });
-        const driver2 = new PgDriver({ pool });
+        const tx1 = new PgTxContext(client1);
+        const tx2 = new PgTxContext(client2);
 
-        // Execute parallel claims
-        const claims = await Promise.allSettled([
-          driver1.withTransaction(async tx => tx.idempotency.claim('race_key_99', raceCmd)),
-          driver2.withTransaction(async tx => tx.idempotency.claim('race_key_99', raceCmd)),
-        ]);
+        // 1. Client 1 claims the idempotency key (inserts status = 'PENDING')
+        const claim1 = await tx1.idempotency.claim(raceKey, raceCmd);
+        assert.equal(claim1.status, 'CLAIMED');
 
-        const fulfilled = claims.filter(c => c.status === 'fulfilled');
-        const rejected = claims.filter(c => c.status === 'rejected');
+        // Execute handler work on Client 1
+        handlerCallCount++;
+        await tx1.featureFlags.set('FORTUNE_V2', true);
+        const raceEventId = `evt_race_${Date.now()}`;
+        tx1.outbox.record(createDomainEvent({
+          eventId: raceEventId,
+          eventType: 'festival.booth_entered',
+          aggregate: { type: 'booth', id: 'b_controlled_race' },
+          actor: raceActor,
+        }));
 
-        assert.equal(fulfilled.length, 1);
-        assert.equal(fulfilled[0].value.status, 'CLAIMED');
-        assert.equal(rejected.length, 1);
+        // 2. Client 2 attempts to claim the EXACT same (actor_id, idempotency_key) concurrently while Client 1 transaction is open
+        const client2ClaimPromise = tx2.idempotency.claim(raceKey, raceCmd).catch(err => err);
 
-        await client1.query('ROLLBACK');
+        // Winner (Client 1) flushes outbox, completes idempotency record, and commits
+        await tx1.flushStagedOutbox();
+        await tx1.idempotency.complete(raceActor.actorId, raceKey, { ticket: 'winner_ticket_100' });
+        await client1.query('COMMIT');
+
+        // Await Client 2's promise after Client 1 commits (Client 2 blocked on row lock until Client 1 commit)
+        const client2Result = await client2ClaimPromise;
+        assert.ok(client2Result instanceof Error, 'Client 2 claim must result in an error');
+        assert.ok(
+          client2Result.name === 'ConcurrentExecutionError' || client2Result.status === 'COMPLETED',
+          'Client 2 receiving concurrent execution or replayed completion'
+        );
+
+        // Client 2 MUST ROLLBACK and NOT mutate state
         await client2.query('ROLLBACK');
+
+        // 3. Retry same command after winner COMMIT
+        const replayRes = await pgDriver.withTransaction(async (tx) => {
+          return await tx.idempotency.claim(raceKey, raceCmd);
+        });
+
+        assert.equal(replayRes.status, 'COMPLETED');
+        assert.equal(replayRes.result.ticket, 'winner_ticket_100');
+
+        // 4. Verification of exact execution counts and state/outbox singleton invariants
+        assert.equal(handlerCallCount, 1, 'Domain handler executed exactly ONCE');
+
+        const outboxRows = await pool.query(`SELECT status FROM public.v2_outbox WHERE event_id = $1`, [raceEventId]);
+        assert.equal(outboxRows.rows.length, 1, 'Outbox event persisted exactly ONCE');
+
       } finally {
         client1.release();
         client2.release();

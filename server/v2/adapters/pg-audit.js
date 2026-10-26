@@ -62,14 +62,6 @@ export class PgAdminAuditLogger {
       commandId,
     };
 
-    if (tx) {
-      await tx.recordMutation({
-        table: 'v2_admin_audit_logs',
-        action: 'INSERT',
-        data: dbRecord,
-      });
-    }
-
     if (this.db) {
       await this.db.insertAuditRecord(dbRecord);
     }
