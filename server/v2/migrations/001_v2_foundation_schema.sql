@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS public.v2_feature_flags (
 );
 
 ALTER TABLE public.v2_feature_flags ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON public.v2_feature_flags TO anon, authenticated;
 
 --------------------------------------------------------------------------------
 -- 5. DURABLE KILL-SWITCHES STORAGE
@@ -122,42 +123,16 @@ CREATE TABLE IF NOT EXISTS public.v2_admin_audit_logs (
 
 ALTER TABLE public.v2_admin_audit_logs ENABLE ROW LEVEL SECURITY;
 
---------------------------------------------------------------------------------
--- Portable Privilege Scoping for V2 Tables
--- Always revokes direct writes from PUBLIC across all PostgreSQL platforms (Neon, AWS RDS, Supabase).
--- Conditionally grants/revokes for Supabase roles (anon, authenticated) if they exist.
---------------------------------------------------------------------------------
-DO $$
-BEGIN
-  -- Standard ANSI/PostgreSQL privilege revokes (PUBLIC is built-in on all database engines)
-  REVOKE UPDATE, DELETE, INSERT ON public.v2_admin_audit_logs FROM PUBLIC;
-  REVOKE INSERT, UPDATE, DELETE ON public.v2_idempotency FROM PUBLIC;
-  REVOKE INSERT, UPDATE, DELETE ON public.v2_outbox FROM PUBLIC;
-  REVOKE INSERT, UPDATE, DELETE ON public.v2_config_rulesets FROM PUBLIC;
-  REVOKE INSERT, UPDATE, DELETE ON public.v2_feature_flags FROM PUBLIC;
-  REVOKE INSERT, UPDATE, DELETE ON public.v2_kill_switches FROM PUBLIC;
+-- Explicit privilege scoping: Revoke UPDATE, DELETE, and direct client INSERT on v2_admin_audit_logs
+REVOKE UPDATE, DELETE, INSERT ON public.v2_admin_audit_logs FROM PUBLIC, anon, authenticated;
 
-  -- Supabase-specific role 'anon' if present
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-    EXECUTE 'GRANT SELECT ON public.v2_feature_flags TO anon';
-    EXECUTE 'REVOKE UPDATE, DELETE, INSERT ON public.v2_admin_audit_logs FROM anon';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_idempotency FROM anon';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_outbox FROM anon';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_config_rulesets FROM anon';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_feature_flags FROM anon';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_kill_switches FROM anon';
-  END IF;
-
-  -- Supabase-specific role 'authenticated' if present
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-    EXECUTE 'GRANT SELECT ON public.v2_feature_flags TO authenticated';
-    EXECUTE 'REVOKE UPDATE, DELETE, INSERT ON public.v2_admin_audit_logs FROM authenticated';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_idempotency FROM authenticated';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_outbox FROM authenticated';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_config_rulesets FROM authenticated';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_feature_flags FROM authenticated';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_kill_switches FROM authenticated';
-  END IF;
-END $$;
+--------------------------------------------------------------------------------
+-- Explicit privilege scoping for V2 tables (Does NOT alter legacy tables)
+--------------------------------------------------------------------------------
+REVOKE INSERT, UPDATE, DELETE ON public.v2_idempotency FROM PUBLIC, anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.v2_outbox FROM PUBLIC, anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.v2_config_rulesets FROM PUBLIC, anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.v2_feature_flags FROM PUBLIC, anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.v2_kill_switches FROM PUBLIC, anon, authenticated;
 
 COMMIT;

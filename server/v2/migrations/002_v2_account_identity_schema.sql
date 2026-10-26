@@ -1,4 +1,4 @@
--- Đám Cưới Chuột V2 · Milestone M2.1 Account / Auth Domain Foundation Schema
+-- Đám Cưới Chuột V2 · Milestone M2.1 Account & Provider Identity Domain Foundation Schema
 -- Migration 002: V2 Accounts & Provider Identities Storage
 -- Execution: Run in PostgreSQL / Supabase SQL Editor or migration runner.
 -- NOTE: This script is non-destructive and coexists with M1 tables and legacy tables.
