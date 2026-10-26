@@ -47,8 +47,13 @@ CREATE TABLE IF NOT EXISTS public.v2_outbox (
   attempt_count INT NOT NULL DEFAULT 0,
   last_error TEXT,
   published_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Schema compatibility guard for existing v2_outbox tables created before updated_at was added
+ALTER TABLE public.v2_outbox
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_v2_outbox_pending_pub
   ON public.v2_outbox (status, created_at)

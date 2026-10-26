@@ -17,7 +17,7 @@
 
 import { TransactionContext, UnitOfWork } from './transaction.js';
 import { OutboxRecorder, OutboxPublisher } from './outbox.js';
-import { MemoryOutboxDriver } from '../adapters/pg-outbox.js';
+import { PgOutboxPublisher, MemoryOutboxDriver } from '../adapters/pg-outbox.js';
 
 export async function executePipeline({
   command,

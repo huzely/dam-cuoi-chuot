@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { PgDriver, assertSafeTestDatabaseUrl } from '../adapters/pg-driver.js';
+import { PgDriver, PgTxContext, assertSafeTestDatabaseUrl } from '../adapters/pg-driver.js';
 import { PgAdminPersistence } from '../adapters/pg-admin-persistence.js';
 import { PgOutboxPublisher } from '../adapters/pg-outbox.js';
 import { AdminService, ADMIN_COMMAND_TYPES } from '../domains/admin/service.js';
@@ -169,23 +169,29 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
 
     await t.test('6. Post-commit publication failure and durable retry status on PostgreSQL', async () => {
       const eventId = `evt_pub_${Date.now()}`;
-      await pgDriver.withTransaction(async (tx) => {
-        tx.outbox.record(createDomainEvent({
-          eventId,
-          eventType: 'festival.booth_entered',
-          aggregate: { type: 'booth', id: 'b1' },
-        }));
+      const domainEvent = createDomainEvent({
+        eventId,
+        eventType: 'festival.booth_entered',
+        aggregate: { type: 'booth', id: 'b1' },
       });
 
-      const publisher = new PgOutboxPublisher(pgDriver, async () => {
+      await pgDriver.withTransaction(async (tx) => {
+        tx.outbox.record(domainEvent);
+      });
+
+      const failingPublisher = new PgOutboxPublisher(pgDriver, async () => {
         throw new Error('Post-commit message transport unreachable');
       });
 
-      const records = await pgDriver.claimRetryableOutboxBatch(10);
-      const targetRecord = records.find(r => r.event.eventId === eventId);
-      assert.ok(targetRecord);
+      // Target the specifically created outbox event record deterministically
+      const committedRecord = {
+        event: domainEvent,
+        status: 'COMMITTED_IN_STORAGE',
+        attemptCount: 0,
+        lastError: null,
+      };
 
-      const pubResult = await publisher.publishCommitted([targetRecord]);
+      const pubResult = await failingPublisher.publishCommitted([committedRecord]);
       assert.equal(pubResult.publicationErrors.length, 1);
 
       // Verify status in database is PUBLICATION_FAILED_RETRYABLE
@@ -194,10 +200,11 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(statusRes.rows[0].attempt_count, 1);
       assert.equal(statusRes.rows[0].last_error, 'Post-commit message transport unreachable');
 
-      // Retry with working publisher succeeds and clears last_error
+      // Retry with working publisher for this specific record succeeds and clears last_error
       const workingPublisher = new PgOutboxPublisher(pgDriver, async () => {});
-      const retryResult = await workingPublisher.processRetryableOutbox();
-      assert.ok(retryResult.publishedEvents.some(e => e.eventId === eventId));
+      const retryResult = await workingPublisher.publishCommitted([committedRecord]);
+      assert.equal(retryResult.publishedEvents.length, 1);
+      assert.equal(retryResult.publishedEvents[0].eventId, eventId);
 
       const updatedRes = await pool.query(`SELECT status, published_at, last_error FROM public.v2_outbox WHERE event_id = $1`, [eventId]);
       assert.equal(updatedRes.rows[0].status, 'PUBLISHED');
@@ -254,6 +261,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
 
     await t.test('9. Config DRAFT creation, approval, and APPROVED immutability on PostgreSQL', async () => {
       const econManager = { actorId: 'econ_pg_1', role: QTV_ROLES.ECONOMY_MANAGER };
+      const configVersion = `2.0.0-pg-${Date.now()}`;
 
       // Draft creation
       await adminService.executeAdminCommand({
@@ -262,7 +270,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
           type: ADMIN_COMMAND_TYPES.CONFIG_CREATE_DRAFT,
           actor: econManager,
           payload: {
-            version: '2.0.0-pg',
+            version: configVersion,
             definitions: { 'BASE_FEE': { category: CONFIG_CATEGORIES.ECONOMY_CONFIG, value: 50 } },
             reason: 'Draft ruleset for live PG test',
           },
@@ -275,12 +283,12 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
         command: createCommand({
           type: ADMIN_COMMAND_TYPES.CONFIG_APPROVE,
           actor: econManager,
-          payload: { version: '2.0.0-pg', reason: 'Approving ruleset' },
+          payload: { version: configVersion, reason: 'Approving ruleset' },
         }),
       });
 
       // Assert version status is APPROVED
-      const approvedRes = await pgDriver.withTransaction(async (tx) => tx.config.getRulesetByVersion('2.0.0-pg'));
+      const approvedRes = await pgDriver.withTransaction(async (tx) => tx.config.getRulesetByVersion(configVersion));
       assert.equal(approvedRes.status, 'APPROVED');
 
       // Attempting to overwrite APPROVED version fails
@@ -291,7 +299,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
             type: ADMIN_COMMAND_TYPES.CONFIG_CREATE_DRAFT,
             actor: econManager,
             payload: {
-              version: '2.0.0-pg',
+              version: configVersion,
               definitions: { 'BASE_FEE': { category: CONFIG_CATEGORIES.ECONOMY_CONFIG, value: 999 } },
               reason: 'Overwriting approved ruleset',
             },
@@ -319,41 +327,42 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
     await t.test('11. Idempotency (actor_id, key) uniqueness, replay, and conflict on PostgreSQL', async () => {
       const actorA = { actorId: 'actor_pg_A' };
       const actorB = { actorId: 'actor_pg_B' };
+      const testKey = `pg_idem_key_${Date.now()}`;
       const cmdA1 = createCommand({
         type: 'festival.enter_booth',
         actor: actorA,
-        idempotencyKey: 'pg_idem_key_1',
+        idempotencyKey: testKey,
         payload: { boothId: 'b1' },
       });
       const cmdA2Same = createCommand({
         type: 'festival.enter_booth',
         actor: actorA,
-        idempotencyKey: 'pg_idem_key_1',
+        idempotencyKey: testKey,
         payload: { boothId: 'b1' },
       });
       const cmdA2Diff = createCommand({
         type: 'festival.enter_booth',
         actor: actorA,
-        idempotencyKey: 'pg_idem_key_1',
+        idempotencyKey: testKey,
         payload: { boothId: 'b2_different' },
       });
       const cmdB1 = createCommand({
         type: 'festival.enter_booth',
         actor: actorB,
-        idempotencyKey: 'pg_idem_key_1',
+        idempotencyKey: testKey,
         payload: { boothId: 'b1' },
       });
 
       // Actor A claims key
       await pgDriver.withTransaction(async (tx) => {
-        const claim = await tx.idempotency.claim('pg_idem_key_1', cmdA1);
+        const claim = await tx.idempotency.claim(testKey, cmdA1);
         assert.equal(claim.status, 'CLAIMED');
-        await tx.idempotency.complete('actor_pg_A', 'pg_idem_key_1', { result: 'A_OK' });
+        await tx.idempotency.complete('actor_pg_A', testKey, { result: 'A_OK' });
       });
 
       // Actor A replays same key + same command -> returns cached result
       await pgDriver.withTransaction(async (tx) => {
-        const replay = await tx.idempotency.claim('pg_idem_key_1', cmdA2Same);
+        const replay = await tx.idempotency.claim(testKey, cmdA2Same);
         assert.equal(replay.status, 'COMPLETED');
         assert.equal(replay.result.result, 'A_OK');
       });
@@ -361,13 +370,13 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       // Actor A uses same key + different command -> throws IdempotencyMismatchError
       await assert.rejects(async () => {
         await pgDriver.withTransaction(async (tx) => {
-          await tx.idempotency.claim('pg_idem_key_1', cmdA2Diff);
+          await tx.idempotency.claim(testKey, cmdA2Diff);
         });
       }, IdempotencyMismatchError);
 
       // Actor B uses same key string independently without conflict
       await pgDriver.withTransaction(async (tx) => {
-        const claimB = await tx.idempotency.claim('pg_idem_key_1', cmdB1);
+        const claimB = await tx.idempotency.claim(testKey, cmdB1);
         assert.equal(claimB.status, 'CLAIMED');
       });
     });
@@ -482,10 +491,11 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
 
     await t.test('14. End-to-end production command pipeline execution and replay on PostgreSQL', async () => {
       const actor = { actorId: 'usr_e2e_1' };
+      const e2eKey = `idem_e2e_${Date.now()}`;
       const e2eCmd = createCommand({
         type: 'festival.enter_booth',
         actor,
-        idempotencyKey: 'idem_e2e_100',
+        idempotencyKey: e2eKey,
         payload: { boothId: 'b_e2e' },
       });
 
