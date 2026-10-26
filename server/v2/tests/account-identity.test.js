@@ -5,6 +5,7 @@ import {
   AccountService,
   SUPPORTED_PROVIDERS,
   ACCOUNT_STATES,
+  PROVIDER_IDENTITY_UNIQUE_CONSTRAINT,
   UnsupportedProviderError,
   InvalidProviderSubjectError,
   AccountNotFoundError,
@@ -41,7 +42,7 @@ class MemoryAccountDriver {
           if (this.providerIdentities.has(key)) {
             const err = new Error(`Unique constraint violation for key ${key}`);
             err.code = '23505';
-            err.constraint = 'uq_v2_provider_identities';
+            err.constraint = PROVIDER_IDENTITY_UNIQUE_CONSTRAINT;
             throw err;
           }
           const now = new Date().toISOString();
@@ -80,12 +81,10 @@ test('Account Unit Test 1: Account creation returns/persists immutable UUID user
   );
   assert.equal(account.state, 'ACTIVE');
 
-  // Verify stored in driver
   const retrieved = await service.getAccountById(account.userId);
   assert.equal(retrieved.userId, account.userId);
   assert.equal(retrieved.state, 'ACTIVE');
 
-  // Verify outbox event identity.account_created
   assert.equal(driver.outboxEvents.length, 1);
   assert.equal(driver.outboxEvents[0].eventType, 'identity.account_created');
   assert.equal(driver.outboxEvents[0].payload.userId, account.userId);
@@ -216,7 +215,7 @@ test('Link Provider Unit Test 5: Re-linking same provider identity to same accou
   const service = new AccountService({ pgDriver: driver });
 
   const account = await service.createAccount();
-  const initialOutboxCount = driver.outboxEvents.length; // 1 from createAccount
+  const initialOutboxCount = driver.outboxEvents.length;
 
   const firstLink = await service.linkProviderIdentity({
     userId: account.userId,
@@ -226,7 +225,6 @@ test('Link Provider Unit Test 5: Re-linking same provider identity to same accou
 
   assert.equal(driver.outboxEvents.length, initialOutboxCount + 1);
 
-  // Re-link exact same identity to exact same account
   const secondLink = await service.linkProviderIdentity({
     userId: account.userId,
     provider: 'GOOGLE',
@@ -235,7 +233,6 @@ test('Link Provider Unit Test 5: Re-linking same provider identity to same accou
 
   assert.equal(secondLink.userId, firstLink.userId);
   assert.equal(secondLink.providerSubject, firstLink.providerSubject);
-  // Outbox events count MUST stay the same (no duplicate event emitted!)
   assert.equal(driver.outboxEvents.length, initialOutboxCount + 1);
 });
 
@@ -254,14 +251,13 @@ test('Link Provider Unit Test 6: Linking to non-existent account fails with Acco
   }, AccountNotFoundError);
 });
 
-test('Link Provider Unit Test 7: PostgreSQL 23505 uniqueness conflict is mapped to DuplicateProviderIdentityError', async () => {
+test('Strict 23505 Constraint Mapping Test A: Correct provider constraint 23505 maps to DuplicateProviderIdentityError', async () => {
   const driver = new MemoryAccountDriver();
   const service = new AccountService({ pgDriver: driver });
 
   const account1 = await service.createAccount();
   const account2 = await service.createAccount();
 
-  // Simulate concurrent insertion collision by manipulating driver link to throw 23505
   let callCount = 0;
   const originalLink = driver.withTransaction;
 
@@ -271,10 +267,9 @@ test('Link Provider Unit Test 7: PostgreSQL 23505 uniqueness conflict is mapped 
       tx.providerIdentities.link = async (params) => {
         callCount++;
         if (callCount === 2) {
-          const pgErr = new Error('duplicate key value violates unique constraint "uq_v2_provider_identities"');
+          const pgErr = new Error('duplicate key value violates unique constraint "uq_v2_provider_identities_provider_subject"');
           pgErr.code = '23505';
-          pgErr.constraint = 'uq_v2_provider_identities';
-          pgErr.detail = 'Key (provider, provider_subject)=(GOOGLE, collision_sub) already exists.';
+          pgErr.constraint = PROVIDER_IDENTITY_UNIQUE_CONSTRAINT;
           throw pgErr;
         }
         return await origProviderLink.call(tx.providerIdentities, params);
@@ -286,14 +281,107 @@ test('Link Provider Unit Test 7: PostgreSQL 23505 uniqueness conflict is mapped 
   await service.linkProviderIdentity({
     userId: account1.userId,
     provider: 'GOOGLE',
-    providerSubject: 'collision_sub',
+    providerSubject: 'exact_constraint_sub',
   });
 
   await assert.rejects(async () => {
     await service.linkProviderIdentity({
       userId: account2.userId,
       provider: 'GOOGLE',
-      providerSubject: 'collision_sub',
+      providerSubject: 'exact_constraint_sub',
     });
   }, DuplicateProviderIdentityError);
+});
+
+test('Strict 23505 Constraint Mapping Test B: Unrelated named 23505 does NOT map to DuplicateProviderIdentityError', async () => {
+  const driver = new MemoryAccountDriver();
+  const service = new AccountService({ pgDriver: driver });
+
+  const account1 = await service.createAccount();
+  const account2 = await service.createAccount();
+
+  let callCount = 0;
+  const originalLink = driver.withTransaction;
+
+  driver.withTransaction = async (workFn) => {
+    return await originalLink.call(driver, async (tx) => {
+      const origProviderLink = tx.providerIdentities.link;
+      tx.providerIdentities.link = async (params) => {
+        callCount++;
+        if (callCount === 2) {
+          const pgErr = new Error('duplicate key value violates unique constraint "unrelated_other_table_key"');
+          pgErr.code = '23505';
+          pgErr.constraint = 'unrelated_other_table_key';
+          throw pgErr;
+        }
+        return await origProviderLink.call(tx.providerIdentities, params);
+      };
+      return await workFn(tx);
+    });
+  };
+
+  await service.linkProviderIdentity({
+    userId: account1.userId,
+    provider: 'GOOGLE',
+    providerSubject: 'unrelated_sub',
+  });
+
+  await assert.rejects(async () => {
+    await service.linkProviderIdentity({
+      userId: account2.userId,
+      provider: 'GOOGLE',
+      providerSubject: 'unrelated_sub',
+    });
+  }, (err) => {
+    assert.equal(err instanceof DuplicateProviderIdentityError, false, 'Must NOT be DuplicateProviderIdentityError');
+    assert.equal(err.code, '23505');
+    assert.equal(err.constraint, 'unrelated_other_table_key');
+    return true;
+  });
+});
+
+test('Strict 23505 Constraint Mapping Test C: 23505 with missing constraint name does NOT map to DuplicateProviderIdentityError', async () => {
+  const driver = new MemoryAccountDriver();
+  const service = new AccountService({ pgDriver: driver });
+
+  const account1 = await service.createAccount();
+  const account2 = await service.createAccount();
+
+  let callCount = 0;
+  const originalLink = driver.withTransaction;
+
+  driver.withTransaction = async (workFn) => {
+    return await originalLink.call(driver, async (tx) => {
+      const origProviderLink = tx.providerIdentities.link;
+      tx.providerIdentities.link = async (params) => {
+        callCount++;
+        if (callCount === 2) {
+          const pgErr = new Error('duplicate key value violates unique constraint with null constraint field');
+          pgErr.code = '23505';
+          pgErr.constraint = undefined;
+          throw pgErr;
+        }
+        return await origProviderLink.call(tx.providerIdentities, params);
+      };
+      return await workFn(tx);
+    });
+  };
+
+  await service.linkProviderIdentity({
+    userId: account1.userId,
+    provider: 'GOOGLE',
+    providerSubject: 'missing_constraint_sub',
+  });
+
+  await assert.rejects(async () => {
+    await service.linkProviderIdentity({
+      userId: account2.userId,
+      provider: 'GOOGLE',
+      providerSubject: 'missing_constraint_sub',
+    });
+  }, (err) => {
+    assert.equal(err instanceof DuplicateProviderIdentityError, false, 'Must NOT be DuplicateProviderIdentityError');
+    assert.equal(err.code, '23505');
+    return true;
+  });
 });

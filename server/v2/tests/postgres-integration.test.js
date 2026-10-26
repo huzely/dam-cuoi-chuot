@@ -90,12 +90,14 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
   const accountService = new AccountService({ pgDriver });
 
   try {
-    await t.test('1. Migrations 001 and 002 apply cleanly to PostgreSQL', async () => {
+    await t.test('1. Migrations 001 and 002 apply cleanly and idempotently to PostgreSQL', async () => {
       const sql001 = fs.readFileSync(migration001Path, 'utf8');
       const sql002 = fs.readFileSync(migration002Path, 'utf8');
       const client = await pool.connect();
       try {
         await client.query(sql001);
+        await client.query(sql002);
+        // Rerun migration 002 against the exact same connection to verify idempotency / re-run safety
         await client.query(sql002);
       } finally {
         client.release();
@@ -115,6 +117,13 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(tables.includes('v2_admin_audit_logs'), true);
       assert.equal(tables.includes('v2_accounts'), true);
       assert.equal(tables.includes('v2_provider_identities'), true);
+
+      const constraintRes = await pool.query(
+        `SELECT constraint_name FROM information_schema.table_constraints
+         WHERE table_schema = 'public' AND table_name = 'v2_provider_identities' AND constraint_type = 'UNIQUE'`
+      );
+      const constraints = constraintRes.rows.map(r => r.constraint_name);
+      assert.equal(constraints.includes('uq_v2_provider_identities_provider_subject'), true);
     });
 
     await t.test('3. Real PostgreSQL Account creation & lookup', async () => {

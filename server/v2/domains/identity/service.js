@@ -9,6 +9,7 @@ import { createDomainEvent } from '../../core/event.js';
 import {
   ACCOUNT_STATES,
   EVENT_TYPES,
+  PROVIDER_IDENTITY_UNIQUE_CONSTRAINT,
   validateAndNormalizeProvider,
   validateProviderSubject,
   AccountNotFoundError,
@@ -118,7 +119,7 @@ export class AccountService {
    * - Fails with AccountNotFoundError if target account does not exist.
    * - If identity is already linked to the exact same account, returns existing identity (idempotent success, no duplicate event).
    * - If identity is already linked to another account, throws DuplicateProviderIdentityError.
-   * - Maps 23505 PostgreSQL uniqueness violation specifically on provider identity constraint to DuplicateProviderIdentityError.
+   * - Maps 23505 PostgreSQL uniqueness violation ONLY when err.constraint strictly matches PROVIDER_IDENTITY_UNIQUE_CONSTRAINT.
    * - Emits identity.provider_linked domain event atomically inside active transaction.
    *
    * @param {Object} params
@@ -163,18 +164,9 @@ export class AccountService {
           userId,
         });
       } catch (err) {
-        if (err.code === '23505') {
-          // Check if error constraint corresponds to provider identity uniqueness
-          const constraintName = (err.constraint || '').toLowerCase();
-          const detailStr = (err.detail || '').toLowerCase();
-          if (
-            constraintName.includes('provider') ||
-            constraintName.includes('uq_v2_provider_identities') ||
-            detailStr.includes('provider') ||
-            !constraintName // fallback for memory/mock adapters
-          ) {
-            throw new DuplicateProviderIdentityError(normalizedProvider, validSubject);
-          }
+        // STRICT 23505 CONSTRAINT MAPPING
+        if (err.code === '23505' && err.constraint === PROVIDER_IDENTITY_UNIQUE_CONSTRAINT) {
+          throw new DuplicateProviderIdentityError(normalizedProvider, validSubject);
         }
         throw err;
       }

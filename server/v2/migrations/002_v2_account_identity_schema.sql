@@ -22,17 +22,33 @@ ALTER TABLE public.v2_accounts ENABLE ROW LEVEL SECURITY;
 --------------------------------------------------------------------------------
 -- 2. V2 PROVIDER IDENTITIES STORAGE
 -- Maps external authentication providers (GOOGLE, FACEBOOK, THREADS) to V2 accounts.
--- Uniqueness is strictly enforced on (provider, provider_subject).
+-- Authoritative uniqueness constraint is strictly uq_v2_provider_identities_provider_subject.
 --------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.v2_provider_identities (
   provider TEXT NOT NULL,
   provider_subject TEXT NOT NULL,
   user_id UUID NOT NULL REFERENCES public.v2_accounts(user_id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (provider, provider_subject),
-  CONSTRAINT uq_v2_provider_identities UNIQUE (provider, provider_subject)
+  linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Safely reconcile existing constraints without data loss if migration 002 ran previously on TEST/STAGING
+ALTER TABLE public.v2_provider_identities
+  DROP CONSTRAINT IF EXISTS uq_v2_provider_identities,
+  DROP CONSTRAINT IF EXISTS v2_provider_identities_pkey;
+
+-- Add authoritative single named constraint uq_v2_provider_identities_provider_subject
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'uq_v2_provider_identities_provider_subject'
+  ) THEN
+    ALTER TABLE public.v2_provider_identities
+      ADD CONSTRAINT uq_v2_provider_identities_provider_subject
+      UNIQUE (provider, provider_subject);
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_v2_provider_identities_user_id
   ON public.v2_provider_identities (user_id);

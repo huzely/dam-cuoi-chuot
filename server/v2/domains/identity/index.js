@@ -12,6 +12,8 @@ import { AccountService } from './service.js';
 
 export const DOMAIN_NAME = 'identity';
 
+export const PROVIDER_IDENTITY_UNIQUE_CONSTRAINT = 'uq_v2_provider_identities_provider_subject';
+
 export const SUPPORTED_PROVIDERS = Object.freeze({
   GOOGLE: 'GOOGLE',
   FACEBOOK: 'FACEBOOK',

@@ -78,10 +78,10 @@ test('Schema Migration Static Verification: 002_v2_account_identity_schema.sql f
     'v2_accounts must declare UUID primary key default gen_random_uuid()'
   );
 
-  // Verify composite provider identity uniqueness
+  // Verify exact named authoritative provider identity uniqueness constraint
   assert.ok(
-    sqlContent.includes('uq_v2_provider_identities') || sqlContent.includes('PRIMARY KEY (provider, provider_subject)'),
-    'v2_provider_identities must enforce uniqueness on (provider, provider_subject)'
+    sqlContent.includes('uq_v2_provider_identities_provider_subject'),
+    'v2_provider_identities must declare authoritative named constraint uq_v2_provider_identities_provider_subject'
   );
 
   // Verify RLS is enabled
