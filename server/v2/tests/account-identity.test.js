@@ -255,38 +255,24 @@ test('Strict 23505 Constraint Mapping Test A: Correct provider constraint 23505 
   const driver = new MemoryAccountDriver();
   const service = new AccountService({ pgDriver: driver });
 
-  const account1 = await service.createAccount();
-  const account2 = await service.createAccount();
+  const account = await service.createAccount();
 
-  let callCount = 0;
   const originalLink = driver.withTransaction;
-
   driver.withTransaction = async (workFn) => {
     return await originalLink.call(driver, async (tx) => {
-      const origProviderLink = tx.providerIdentities.link;
-      tx.providerIdentities.link = async (params) => {
-        callCount++;
-        if (callCount === 2) {
-          const pgErr = new Error('duplicate key value violates unique constraint "uq_v2_provider_identities_provider_subject"');
-          pgErr.code = '23505';
-          pgErr.constraint = PROVIDER_IDENTITY_UNIQUE_CONSTRAINT;
-          throw pgErr;
-        }
-        return await origProviderLink.call(tx.providerIdentities, params);
+      tx.providerIdentities.link = async () => {
+        const pgErr = new Error('duplicate key value violates unique constraint "uq_v2_provider_identities_provider_subject"');
+        pgErr.code = '23505';
+        pgErr.constraint = PROVIDER_IDENTITY_UNIQUE_CONSTRAINT;
+        throw pgErr;
       };
       return await workFn(tx);
     });
   };
 
-  await service.linkProviderIdentity({
-    userId: account1.userId,
-    provider: 'GOOGLE',
-    providerSubject: 'exact_constraint_sub',
-  });
-
   await assert.rejects(async () => {
     await service.linkProviderIdentity({
-      userId: account2.userId,
+      userId: account.userId,
       provider: 'GOOGLE',
       providerSubject: 'exact_constraint_sub',
     });
@@ -297,38 +283,24 @@ test('Strict 23505 Constraint Mapping Test B: Unrelated named 23505 does NOT map
   const driver = new MemoryAccountDriver();
   const service = new AccountService({ pgDriver: driver });
 
-  const account1 = await service.createAccount();
-  const account2 = await service.createAccount();
+  const account = await service.createAccount();
 
-  let callCount = 0;
   const originalLink = driver.withTransaction;
-
   driver.withTransaction = async (workFn) => {
     return await originalLink.call(driver, async (tx) => {
-      const origProviderLink = tx.providerIdentities.link;
-      tx.providerIdentities.link = async (params) => {
-        callCount++;
-        if (callCount === 2) {
-          const pgErr = new Error('duplicate key value violates unique constraint "unrelated_other_table_key"');
-          pgErr.code = '23505';
-          pgErr.constraint = 'unrelated_other_table_key';
-          throw pgErr;
-        }
-        return await origProviderLink.call(tx.providerIdentities, params);
+      tx.providerIdentities.link = async () => {
+        const pgErr = new Error('duplicate key value violates unique constraint "unrelated_other_table_key"');
+        pgErr.code = '23505';
+        pgErr.constraint = 'unrelated_other_table_key';
+        throw pgErr;
       };
       return await workFn(tx);
     });
   };
 
-  await service.linkProviderIdentity({
-    userId: account1.userId,
-    provider: 'GOOGLE',
-    providerSubject: 'unrelated_sub',
-  });
-
   await assert.rejects(async () => {
     await service.linkProviderIdentity({
-      userId: account2.userId,
+      userId: account.userId,
       provider: 'GOOGLE',
       providerSubject: 'unrelated_sub',
     });
@@ -344,38 +316,24 @@ test('Strict 23505 Constraint Mapping Test C: 23505 with missing constraint name
   const driver = new MemoryAccountDriver();
   const service = new AccountService({ pgDriver: driver });
 
-  const account1 = await service.createAccount();
-  const account2 = await service.createAccount();
+  const account = await service.createAccount();
 
-  let callCount = 0;
   const originalLink = driver.withTransaction;
-
   driver.withTransaction = async (workFn) => {
     return await originalLink.call(driver, async (tx) => {
-      const origProviderLink = tx.providerIdentities.link;
-      tx.providerIdentities.link = async (params) => {
-        callCount++;
-        if (callCount === 2) {
-          const pgErr = new Error('duplicate key value violates unique constraint with null constraint field');
-          pgErr.code = '23505';
-          pgErr.constraint = undefined;
-          throw pgErr;
-        }
-        return await origProviderLink.call(tx.providerIdentities, params);
+      tx.providerIdentities.link = async () => {
+        const pgErr = new Error('duplicate key value violates unique constraint with null constraint field');
+        pgErr.code = '23505';
+        pgErr.constraint = undefined;
+        throw pgErr;
       };
       return await workFn(tx);
     });
   };
 
-  await service.linkProviderIdentity({
-    userId: account1.userId,
-    provider: 'GOOGLE',
-    providerSubject: 'missing_constraint_sub',
-  });
-
   await assert.rejects(async () => {
     await service.linkProviderIdentity({
-      userId: account2.userId,
+      userId: account.userId,
       provider: 'GOOGLE',
       providerSubject: 'missing_constraint_sub',
     });
