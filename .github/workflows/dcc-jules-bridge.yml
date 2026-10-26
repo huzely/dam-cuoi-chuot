@@ -3,21 +3,31 @@ name: DCC Jules Bridge
 on:
   workflow_dispatch:
     inputs:
-      session_id:
-        description: 'Existing Jules session ID'
-        required: true
-        default: '13026570411885116826'
       action:
         description: 'Bridge action'
         required: true
         type: choice
         options:
           - status
+          - create-session
           - approve-plan
           - send-message
         default: status
+      session_id:
+        description: 'Existing Jules session ID (status/approve/send)'
+        required: false
+        default: '13026570411885116826'
+      title:
+        description: 'New Jules task title (create-session)'
+        required: false
+        type: string
+      starting_branch:
+        description: 'Starting branch for new Jules task'
+        required: false
+        default: 'jules-13026570411885116826-d6b9e06f'
+        type: string
       message:
-        description: 'Message for Jules (send-message only)'
+        description: 'Task prompt or message'
         required: false
         type: string
 
@@ -37,13 +47,14 @@ jobs:
           test -n "$JULES_API_KEY" || { echo 'JULES_API_KEY secret is missing'; exit 1; }
 
       - name: Get Jules session
-        id: session
+        if: ${{ inputs.action != 'create-session' }}
         shell: bash
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           SESSION_ID: ${{ inputs.session_id }}
         run: |
           set -euo pipefail
+          test -n "$SESSION_ID" || { echo 'session_id is required'; exit 1; }
           curl --fail-with-body --silent --show-error \
             -H "x-goog-api-key: $JULES_API_KEY" \
             "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID" \
@@ -56,6 +67,10 @@ jobs:
           print('Title:', s.get('title'))
           print('State:', s.get('state'))
           print('URL:', s.get('url'))
+          for output in s.get('outputs', []):
+              pr=output.get('pullRequest')
+              if pr:
+                  print('Pull request:', pr.get('url'))
           PY
 
       - name: List latest activities
@@ -75,9 +90,73 @@ jobs:
           with open('activities.json', encoding='utf-8') as f:
               data=json.load(f)
           acts=data.get('activities', [])
-          for a in acts[-20:]:
-              kinds=[k for k in ('planGenerated','planApproved','userMessaged','agentMessaged','progressUpdated','sessionCompleted','sessionFailed') if a.get(k) is not None]
-              print(a.get('createTime'), a.get('originator'), ','.join(kinds) or '-', a.get('description',''))
+          for a in acts[-30:]:
+              kind='-'
+              detail=''
+              for k, field in (
+                  ('planGenerated','planGenerated'),('planApproved','planApproved'),
+                  ('userMessaged','userMessaged'),('agentMessaged','agentMessaged'),
+                  ('progressUpdated','progressUpdated'),('sessionCompleted','sessionCompleted'),
+                  ('sessionFailed','sessionFailed')):
+                  if a.get(field) is not None:
+                      kind=k
+                      obj=a.get(field) or {}
+                      detail=(obj.get('agentMessage') or obj.get('userMessage') or
+                              obj.get('description') or obj.get('reason') or '')
+                      break
+              print(a.get('createTime'), a.get('originator'), kind, detail[:500])
+          PY
+
+      - name: Create new Jules task
+        if: ${{ inputs.action == 'create-session' }}
+        shell: bash
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          TITLE: ${{ inputs.title }}
+          STARTING_BRANCH: ${{ inputs.starting_branch }}
+          MESSAGE: ${{ inputs.message }}
+        run: |
+          set -euo pipefail
+          test -n "$TITLE" || { echo 'title is required for create-session'; exit 1; }
+          test -n "$STARTING_BRANCH" || { echo 'starting_branch is required for create-session'; exit 1; }
+          test -n "$MESSAGE" || { echo 'message is required for create-session'; exit 1; }
+          python3 - <<'PY' > body.json
+          import json, os
+          body={
+            'prompt': os.environ['MESSAGE'],
+            'title': os.environ['TITLE'],
+            'sourceContext': {
+              'source': 'sources/github/huzely/dam-cuoi-chuot',
+              'githubRepoContext': {'startingBranch': os.environ['STARTING_BRANCH']}
+            },
+            'requirePlanApproval': True,
+            'automationMode': 'AUTO_CREATE_PR'
+          }
+          print(json.dumps(body))
+          PY
+          code=$(curl --silent --show-error -o create.json -w '%{http_code}' \
+            -X POST \
+            -H 'Content-Type: application/json' \
+            -H "x-goog-api-key: $JULES_API_KEY" \
+            --data-binary @body.json \
+            'https://jules.googleapis.com/v1alpha/sessions')
+          if [ "$code" = '429' ]; then
+            echo 'JULES_QUOTA_OR_RATE_LIMITED: retry later without advancing the milestone.'
+            cat create.json
+            exit 75
+          fi
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            cat create.json
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          with open('create.json', encoding='utf-8') as f:
+              s=json.load(f)
+          print('Created Jules task/session:', s.get('id'))
+          print('Title:', s.get('title'))
+          print('State:', s.get('state'))
+          print('URL:', s.get('url'))
           PY
 
       - name: Approve Jules plan
