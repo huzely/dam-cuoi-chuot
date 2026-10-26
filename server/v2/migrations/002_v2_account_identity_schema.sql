@@ -56,9 +56,27 @@ CREATE INDEX IF NOT EXISTS idx_v2_provider_identities_user_id
 ALTER TABLE public.v2_provider_identities ENABLE ROW LEVEL SECURITY;
 
 --------------------------------------------------------------------------------
--- Explicit privilege scoping for V2 Account & Identity tables
+-- Portable Privilege Scoping for V2 Account & Identity Tables
+-- Always revokes direct writes from PUBLIC across all PostgreSQL platforms (Neon, AWS RDS, Supabase).
+-- Conditionally revokes for Supabase roles (anon, authenticated) if they exist.
 --------------------------------------------------------------------------------
-REVOKE INSERT, UPDATE, DELETE ON public.v2_accounts FROM PUBLIC, anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON public.v2_provider_identities FROM PUBLIC, anon, authenticated;
+DO $$
+BEGIN
+  -- Standard ANSI/PostgreSQL privilege revokes (PUBLIC is built-in on all database engines)
+  REVOKE INSERT, UPDATE, DELETE ON public.v2_accounts FROM PUBLIC;
+  REVOKE INSERT, UPDATE, DELETE ON public.v2_provider_identities FROM PUBLIC;
+
+  -- Supabase-specific role 'anon' if present
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_accounts FROM anon';
+    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_provider_identities FROM anon';
+  END IF;
+
+  -- Supabase-specific role 'authenticated' if present
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_accounts FROM authenticated';
+    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.v2_provider_identities FROM authenticated';
+  END IF;
+END $$;
 
 COMMIT;

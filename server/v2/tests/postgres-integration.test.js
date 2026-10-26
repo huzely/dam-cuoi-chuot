@@ -695,5 +695,6 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
 
   } finally {
     await pgDriver.close();
+    await pool.end();
   }
 });
