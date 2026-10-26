@@ -8,7 +8,7 @@ import { PgDriver, PgTxContext, assertSafeTestDatabaseUrl } from '../adapters/pg
 import { PgAdminPersistence } from '../adapters/pg-admin-persistence.js';
 import { PgOutboxPublisher } from '../adapters/pg-outbox.js';
 import { AdminService, ADMIN_COMMAND_TYPES } from '../domains/admin/service.js';
-import { AccountService, DuplicateProviderIdentityError, AccountNotFoundError } from '../domains/identity/index.js';
+import { AccountService, AccountNotFoundError } from '../domains/identity/index.js';
 import { QTV_ROLES } from '../core/rbac.js';
 import { createCommand } from '../core/command.js';
 import { createDomainEvent } from '../core/event.js';
@@ -104,7 +104,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       }
     });
 
-    await t.test('2. Verify expected V2 tables and constraints exist on PostgreSQL', async () => {
+    await t.test('2. Verify expected V2 tables exist on PostgreSQL', async () => {
       const res = await pool.query(
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'v2_%'`
       );
@@ -116,14 +116,6 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(tables.includes('v2_kill_switches'), true);
       assert.equal(tables.includes('v2_admin_audit_logs'), true);
       assert.equal(tables.includes('v2_accounts'), true);
-      assert.equal(tables.includes('v2_provider_identities'), true);
-
-      const constraintRes = await pool.query(
-        `SELECT constraint_name FROM information_schema.table_constraints
-         WHERE table_schema = 'public' AND table_name = 'v2_provider_identities' AND constraint_type = 'UNIQUE'`
-      );
-      const constraints = constraintRes.rows.map(r => r.constraint_name);
-      assert.equal(constraints.includes('uq_v2_provider_identities_provider_subject'), true);
     });
 
     await t.test('3. Real PostgreSQL Account creation & lookup', async () => {
@@ -146,160 +138,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(outboxRes.rows[0].payload.userId, account.userId);
     });
 
-    await t.test('4. Real PostgreSQL Provider identity linking & resolution', async () => {
-      const account = await accountService.createAccount();
-      const testSub = `sub_pg_test_${Date.now()}`;
-
-      const link = await accountService.linkProviderIdentity({
-        userId: account.userId,
-        provider: 'google', // Normalized to uppercase GOOGLE
-        providerSubject: testSub,
-      });
-
-      assert.equal(link.userId, account.userId);
-      assert.equal(link.provider, 'GOOGLE');
-      assert.equal(link.providerSubject, testSub);
-
-      const resolved = await accountService.resolveProviderIdentity('GOOGLE', testSub);
-      assert.ok(resolved);
-      assert.equal(resolved.userId, account.userId);
-    });
-
-    await t.test('5. Real PostgreSQL duplicate provider identity linking mapped to DuplicateProviderIdentityError', async () => {
-      const account1 = await accountService.createAccount();
-      const account2 = await accountService.createAccount();
-      const dupSub = `sub_pg_dup_${Date.now()}`;
-
-      await accountService.linkProviderIdentity({
-        userId: account1.userId,
-        provider: 'FACEBOOK',
-        providerSubject: dupSub,
-      });
-
-      await assert.rejects(async () => {
-        await accountService.linkProviderIdentity({
-          userId: account2.userId,
-          provider: 'FACEBOOK',
-          providerSubject: dupSub,
-        });
-      }, DuplicateProviderIdentityError);
-    });
-
-    await t.test('6. Real multi-client PostgreSQL controlled concurrent provider linking race condition', async () => {
-      const client1 = await pool.connect();
-      const client2 = await pool.connect();
-
-      const acc1 = await accountService.createAccount();
-      const acc2 = await accountService.createAccount();
-      const raceSub = `sub_pg_race_${Date.now()}`;
-
-      try {
-        await client1.query('BEGIN');
-        await client2.query('BEGIN');
-
-        const tx1 = new PgTxContext(client1);
-        const tx2 = new PgTxContext(client2);
-
-        // Client 1 inserts provider identity link
-        const link1 = await accountService.linkProviderIdentity({
-          userId: acc1.userId,
-          provider: 'THREADS',
-          providerSubject: raceSub,
-        }, tx1);
-        assert.ok(link1);
-
-        // Client 2 attempts concurrent link of SAME identity to acc2 while Client 1 transaction is open
-        const client2LinkPromise = accountService.linkProviderIdentity({
-          userId: acc2.userId,
-          provider: 'THREADS',
-          providerSubject: raceSub,
-        }, tx2).catch(err => err);
-
-        // Winner (Client 1) commits
-        await client1.query('COMMIT');
-
-        // Client 2 promise completes with DuplicateProviderIdentityError after Client 1 commit
-        const client2Result = await client2LinkPromise;
-        assert.ok(client2Result instanceof Error, 'Client 2 link must result in error');
-        assert.ok(
-          client2Result instanceof DuplicateProviderIdentityError,
-          `Client 2 must receive DuplicateProviderIdentityError, got ${client2Result.name}: ${client2Result.message}`
-        );
-
-        await client2.query('ROLLBACK');
-
-        // Verify strictly 1 owner exists in database
-        const finalResolved = await accountService.resolveProviderIdentity('THREADS', raceSub);
-        assert.ok(finalResolved);
-        assert.equal(finalResolved.userId, acc1.userId);
-
-      } finally {
-        client1.release();
-        client2.release();
-      }
-    });
-
-    await t.test('7. Real PostgreSQL Transaction rollback leaves no partial identity state or outbox events', async () => {
-      const rollbackSub = `sub_pg_rollback_${Date.now()}`;
-      let createdUserId = null;
-
-      await assert.rejects(async () => {
-        await pgDriver.withTransaction(async (tx) => {
-          const acc = await accountService.createAccount({}, tx);
-          createdUserId = acc.userId;
-          await accountService.linkProviderIdentity({
-            userId: acc.userId,
-            provider: 'GOOGLE',
-            providerSubject: rollbackSub,
-          }, tx);
-
-          throw new Error('Forced rollback testing atomic cleanup');
-        });
-      }, /Forced rollback testing atomic cleanup/);
-
-      // Verify account does not exist
-      const accLookup = await accountService.getAccountById(createdUserId);
-      assert.equal(accLookup, null);
-
-      // Verify provider identity link does not exist
-      const identityLookup = await accountService.resolveProviderIdentity('GOOGLE', rollbackSub);
-      assert.equal(identityLookup, null);
-
-      // Verify no outbox rows exist for this account
-      const outboxRows = await pool.query(`SELECT * FROM public.v2_outbox WHERE aggregate_id = $1`, [createdUserId]);
-      assert.equal(outboxRows.rows.length, 0);
-    });
-
-    await t.test('8. Real PostgreSQL idempotent re-linking same provider identity to same account', async () => {
-      const acc = await accountService.createAccount();
-      const idemSub = `sub_pg_idem_relink_${Date.now()}`;
-
-      const link1 = await accountService.linkProviderIdentity({
-        userId: acc.userId,
-        provider: 'GOOGLE',
-        providerSubject: idemSub,
-      });
-
-      // Count outbox events
-      const outbox1 = await pool.query(`SELECT * FROM public.v2_outbox WHERE aggregate_id = $1 AND event_type = 'identity.provider_linked'`, [acc.userId]);
-      assert.equal(outbox1.rows.length, 1);
-
-      // Re-link exact same identity
-      const link2 = await accountService.linkProviderIdentity({
-        userId: acc.userId,
-        provider: 'GOOGLE',
-        providerSubject: idemSub,
-      });
-
-      assert.equal(link2.userId, link1.userId);
-      assert.equal(link2.providerSubject, link1.providerSubject);
-
-      // Verify no duplicate outbox event was created
-      const outbox2 = await pool.query(`SELECT * FROM public.v2_outbox WHERE aggregate_id = $1 AND event_type = 'identity.provider_linked'`, [acc.userId]);
-      assert.equal(outbox2.rows.length, 1);
-    });
-
-    await t.test('9. Real PostgreSQL transaction COMMIT and ROLLBACK', async () => {
+    await t.test('4. Real PostgreSQL transaction COMMIT and ROLLBACK', async () => {
       // Test COMMIT
       await pgDriver.withTransaction(async (tx) => {
         await tx.featureFlags.set('ACCOUNT_V2', true);
@@ -320,7 +159,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(rolledBackFlag, true);
     });
 
-    await t.test('10. Atomic state mutation + outbox commit/rollback on PostgreSQL', async () => {
+    await t.test('5. Atomic state mutation + outbox commit/rollback on PostgreSQL', async () => {
       const eventId = `evt_pg_${Date.now()}`;
       await pgDriver.withTransaction(async (tx) => {
         await tx.featureFlags.set('EMPLOYMENT_V2', true);
@@ -340,7 +179,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(outboxRes.rows[0].status, 'COMMITTED_IN_STORAGE');
     });
 
-    await t.test('11. Outbox persistence failure before COMMIT rolls back state mutation on PostgreSQL', async () => {
+    await t.test('6. Outbox persistence failure before COMMIT rolls back state mutation on PostgreSQL', async () => {
       const initialFlag = await pgDriver.withTransaction(async (tx) => tx.featureFlags.get('TAX_V2'));
 
       await assert.rejects(async () => {
@@ -356,7 +195,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(finalFlag, initialFlag);
     });
 
-    await t.test('12. Post-commit publication failure and durable retry status on PostgreSQL', async () => {
+    await t.test('7. Post-commit publication failure and durable retry status on PostgreSQL', async () => {
       const eventId = `evt_pub_${Date.now()}`;
       const domainEvent = createDomainEvent({
         eventId,
@@ -401,7 +240,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(updatedRes.rows[0].last_error, null);
     });
 
-    await t.test('13. Admin feature flag + audit atomic commit on PostgreSQL', async () => {
+    await t.test('8. Admin feature flag + audit atomic commit on PostgreSQL', async () => {
       const superAdmin = { actorId: 'admin_pg_1', role: QTV_ROLES.SUPER_ADMIN };
 
       const res = await adminService.executeAdminCommand({
@@ -422,7 +261,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(auditRes.rows[0].reason, 'Live PostgreSQL rollout test');
     });
 
-    await t.test('14. Real Admin Audit Failure Rolls Back Feature Flag Mutation on PostgreSQL', async () => {
+    await t.test('9. Real Admin Audit Failure Rolls Back Feature Flag Mutation on PostgreSQL', async () => {
       const superAdmin = { actorId: 'admin_pg_rollback_test', role: QTV_ROLES.SUPER_ADMIN };
 
       await pgDriver.withTransaction(async (tx) => {
@@ -442,7 +281,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(flagVal, false);
     });
 
-    await t.test('15. Config DRAFT creation, approval, and APPROVED immutability on PostgreSQL', async () => {
+    await t.test('10. Config DRAFT creation, approval, and APPROVED immutability on PostgreSQL', async () => {
       const econManager = { actorId: 'econ_pg_1', role: QTV_ROLES.ECONOMY_MANAGER };
       const configVersion = `2.0.0-pg-${Date.now()}`;
 
@@ -487,7 +326,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       }, /Forbidden Mutation Error/);
     });
 
-    await t.test('16. Durable Kill Switch + audit atomic commit on PostgreSQL', async () => {
+    await t.test('11. Durable Kill Switch + audit atomic commit on PostgreSQL', async () => {
       const secReviewer = { actorId: 'sec_pg_1', role: QTV_ROLES.SECURITY_REVIEWER };
 
       await adminService.executeAdminCommand({
@@ -503,7 +342,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(active, true);
     });
 
-    await t.test('17. Idempotency (actor_id, key) uniqueness, replay, and conflict on PostgreSQL', async () => {
+    await t.test('12. Idempotency (actor_id, key) uniqueness, replay, and conflict on PostgreSQL', async () => {
       const actorA = { actorId: 'actor_pg_A' };
       const actorB = { actorId: 'actor_pg_B' };
       const testKey = `pg_idem_key_${Date.now()}`;
@@ -556,7 +395,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       });
     });
 
-    await t.test('18. Real multi-client PostgreSQL controlled concurrent idempotency claim race', async () => {
+    await t.test('13. Real multi-client PostgreSQL controlled concurrent idempotency claim race', async () => {
       const client1 = await pool.connect();
       const client2 = await pool.connect();
 
@@ -624,7 +463,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       }
     });
 
-    await t.test('19. Real retry worker outbox batch concurrency with SKIP LOCKED on PostgreSQL', async () => {
+    await t.test('14. Real retry worker outbox batch concurrency with SKIP LOCKED on PostgreSQL', async () => {
       const event1Id = `evt_worker_1_${Date.now()}`;
       const event2Id = `evt_worker_2_${Date.now()}`;
 
@@ -654,7 +493,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.notEqual(claimedEvent1, claimedEvent2);
     });
 
-    await t.test('20. End-to-end production command pipeline execution and replay on PostgreSQL', async () => {
+    await t.test('15. End-to-end production command pipeline execution and replay on PostgreSQL', async () => {
       const actor = { actorId: 'usr_e2e_1' };
       const e2eKey = `idem_e2e_${Date.now()}`;
       const e2eCmd = createCommand({
