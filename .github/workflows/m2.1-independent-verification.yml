@@ -1,0 +1,56 @@
+name: M2.1 Independent Verification
+
+on:
+  pull_request:
+    branches:
+      - v2-m1.1-domain-foundation-6312924040220493517
+    paths:
+      - 'server/v2/**'
+      - '.github/workflows/m2.1-independent-verification.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m2.1-verification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-and-postgres:
+    name: Unit + PostgreSQL integration (TEST only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      POSTGRES_TEST_URL: ${{ secrets.POSTGRES_TEST_URL }}
+      POSTGRES_IS_TEST_STAGING: 'true'
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/v2/package-lock.json
+
+      - name: Require TEST database secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$POSTGRES_TEST_URL" || { echo 'POSTGRES_TEST_URL secret is missing'; exit 1; }
+          echo "Verifying PR head: ${{ github.event.pull_request.head.sha }}"
+
+      - name: Install locked dependencies
+        working-directory: server/v2
+        run: npm ci
+
+      - name: Run unit and static tests
+        working-directory: server/v2
+        run: npm run test:unit
+
+      - name: Run live PostgreSQL integration and migration 002 repeat
+        working-directory: server/v2
+        run: npm run test:integration
