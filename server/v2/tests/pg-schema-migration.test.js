@@ -29,7 +29,8 @@ test('Schema Migration Static Verification: 001_v2_foundation_schema.sql format 
 
   // Verify audit log immutability (REVOKE UPDATE, DELETE, INSERT)
   assert.ok(
-    sqlContent.includes('REVOKE UPDATE, DELETE, INSERT ON public.v2_admin_audit_logs'),
+    sqlContent.includes('REVOKE UPDATE, DELETE, INSERT ON public.v2_admin_audit_logs') ||
+    sqlContent.includes('REVOKE UPDATE, DELETE, INSERT ON public.v2_admin_audit_logs FROM PUBLIC'),
     'Audit logs must revoke UPDATE, DELETE, and direct INSERT permissions'
   );
 
