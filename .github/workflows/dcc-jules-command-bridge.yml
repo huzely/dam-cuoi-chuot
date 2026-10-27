@@ -1,0 +1,146 @@
+name: DCC Jules Command Bridge
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  command:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.user.login == 'huzely' &&
+      startsWith(github.event.comment.body, '/dcc-jules ')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse and validate command
+        id: cmd
+        env:
+          BODY: ${{ github.event.comment.body }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="${BODY#'/dcc-jules '}"
+          printf '%s' "$payload" | jq -e . >/dev/null
+          action=$(printf '%s' "$payload" | jq -r '.action // empty')
+          session_id=$(printf '%s' "$payload" | jq -r '.session_id // empty')
+          case "$action" in
+            status|approve-plan|send-message|create-session) ;;
+            *) echo "Unsupported action: $action"; exit 1 ;;
+          esac
+          if [[ "$action" != "create-session" && -z "$session_id" ]]; then
+            echo 'session_id is required'; exit 1
+          fi
+          {
+            echo "action=$action"
+            echo "session_id=$session_id"
+          } >> "$GITHUB_OUTPUT"
+          printf '%s' "$payload" > /tmp/command.json
+
+      - name: Validate Jules secret
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$JULES_API_KEY" || { echo 'JULES_API_KEY secret is missing'; exit 1; }
+
+      - name: Get Jules session
+        if: ${{ steps.cmd.outputs.action != 'create-session' }}
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          SESSION_ID: ${{ steps.cmd.outputs.session_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            -H "x-goog-api-key: $JULES_API_KEY" \
+            "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID" \
+            -o /tmp/session.json
+          jq '{id,title,state,url,outputs}' /tmp/session.json
+
+      - name: List Jules activities
+        if: ${{ steps.cmd.outputs.action == 'status' }}
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          SESSION_ID: ${{ steps.cmd.outputs.session_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            -H "x-goog-api-key: $JULES_API_KEY" \
+            "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID/activities?pageSize=100" \
+            | jq '.activities[-30:]'
+
+      - name: Approve Jules plan
+        if: ${{ steps.cmd.outputs.action == 'approve-plan' }}
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          SESSION_ID: ${{ steps.cmd.outputs.session_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            -X POST -H 'Content-Type: application/json' \
+            -H "x-goog-api-key: $JULES_API_KEY" -d '{}' \
+            "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID:approvePlan"
+
+      - name: Send message to Jules
+        if: ${{ steps.cmd.outputs.action == 'send-message' }}
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          SESSION_ID: ${{ steps.cmd.outputs.session_id }}
+          BODY: ${{ github.event.comment.body }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="${BODY#'/dcc-jules '}"
+          message=$(printf '%s' "$payload" | jq -r '.message // empty')
+          test -n "$message" || { echo 'message is required'; exit 1; }
+          jq -n --arg prompt "$message" '{prompt:$prompt}' >/tmp/body.json
+          curl --fail-with-body --silent --show-error \
+            -X POST -H 'Content-Type: application/json' \
+            -H "x-goog-api-key: $JULES_API_KEY" \
+            --data-binary @/tmp/body.json \
+            "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID:sendMessage"
+
+      - name: Create Jules session
+        if: ${{ steps.cmd.outputs.action == 'create-session' }}
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          BODY: ${{ github.event.comment.body }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="${BODY#'/dcc-jules '}"
+          title=$(printf '%s' "$payload" | jq -r '.title // empty')
+          branch=$(printf '%s' "$payload" | jq -r '.starting_branch // empty')
+          message=$(printf '%s' "$payload" | jq -r '.message // empty')
+          test -n "$title" && test -n "$branch" && test -n "$message" || { echo 'title, starting_branch and message are required'; exit 1; }
+          jq -n --arg title "$title" --arg branch "$branch" --arg prompt "$message" \
+            '{prompt:$prompt,title:$title,sourceContext:{source:"sources/github/huzely/dam-cuoi-chuot",githubRepoContext:{startingBranch:$branch}},requirePlanApproval:true,automationMode:"AUTO_CREATE_PR"}' >/tmp/create.json
+          code=$(curl --silent --show-error -o /tmp/result.json -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' \
+            -H "x-goog-api-key: $JULES_API_KEY" --data-binary @/tmp/create.json \
+            'https://jules.googleapis.com/v1alpha/sessions')
+          if [[ "$code" == '429' ]]; then
+            echo 'JULES_QUOTA_OR_RATE_LIMITED'; cat /tmp/result.json; exit 75
+          fi
+          [[ "$code" -ge 200 && "$code" -lt 300 ]] || { cat /tmp/result.json; exit 1; }
+          jq '{id,title,state,url}' /tmp/result.json
+
+      - name: Acknowledge accepted command
+        if: ${{ success() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: '+1'
+            })
