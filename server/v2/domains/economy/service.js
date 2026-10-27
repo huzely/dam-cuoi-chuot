@@ -145,7 +145,7 @@ export class EconomyService {
           transactionId,
           userId,
           amount: valAmount,
-          balanceAfter: newAvailable,
+          balanceAfter: newAvailable + BigInt(wallet.lockedBalance),
           class: validClass,
           type: validType,
           source,
@@ -232,7 +232,7 @@ export class EconomyService {
           transactionId,
           userId,
           amount: -valAmount, // Negative delta for debit
-          balanceAfter: newAvailable,
+          balanceAfter: newAvailable + BigInt(wallet.lockedBalance),
           class: validClass,
           type: validType,
           source,
@@ -350,7 +350,7 @@ export class EconomyService {
           transactionId,
           userId: senderId,
           amount: senderDelta,
-          balanceAfter: newSenderAvailable,
+          balanceAfter: newSenderAvailable + BigInt(senderWallet.lockedBalance),
           class: validClass,
           type: validType,
           source,
@@ -365,7 +365,7 @@ export class EconomyService {
           transactionId,
           userId: recipientId,
           amount: recipientDelta,
-          balanceAfter: newRecipientAvailable,
+          balanceAfter: newRecipientAvailable + BigInt(recipientWallet.lockedBalance),
           class: validClass,
           type: validType,
           source,
@@ -455,12 +455,16 @@ export class EconomyService {
 
   /**
    * Holds / Escrow Lifecycle: 2. ACTIVATE HOLD (CREATED -> ACTIVE)
-   * Moves spendable value from available_balance to locked_balance exactly once.
+   * Internal lock movement: moves spendable value from available_balance to locked_balance.
+   * Total wallet balance (available + locked) remains unchanged; ledger amount = 0n.
+   * Idempotency: deterministic key `hold:${holdId}:activate` (or caller-provided).
    */
-  async activateHold({ holdId, userId }, tx = null) {
+  async activateHold({ holdId, userId, idempotencyKey = null, metadata = {} }, tx = null) {
     if (!holdId || typeof holdId !== 'string') {
       throw new Error('Valid holdId required to activate hold.');
     }
+
+    const effectiveKey = idempotencyKey || `hold:${holdId}:activate`;
 
     return await this._withTx(tx, async (activeTx) => {
       const hold = await activeTx.holds.getById(holdId);
@@ -470,13 +474,21 @@ export class EconomyService {
       if (userId && hold.userId !== userId) {
         throw new Error(`Hold "${holdId}" belongs to user "${hold.userId}", not "${userId}".`);
       }
-      if (hold.status !== HOLD_STATUSES.CREATED) {
-        throw new InvalidHoldStatusError(holdId, hold.status, HOLD_STATUSES.ACTIVE, 'activate hold');
-      }
 
       const wallet = await activeTx.wallets.getByUserId(hold.userId);
       if (!wallet) {
         throw new WalletNotFoundError(hold.userId);
+      }
+
+      // Idempotency check: if hold is ALREADY ACTIVE, return existing state
+      if (hold.status === HOLD_STATUSES.ACTIVE) {
+        const userEntries = await activeTx.ledger.getByUserId(hold.userId);
+        const existingEntry = userEntries.find(e => e.idempotencyKey === effectiveKey || (e.referenceId === holdId && e.type === 'hold.activate'));
+        return { hold, wallet, ledgerEntry: existingEntry || null };
+      }
+
+      if (hold.status !== HOLD_STATUSES.CREATED) {
+        throw new InvalidHoldStatusError(holdId, hold.status, HOLD_STATUSES.ACTIVE, 'activate hold');
       }
 
       const currentAvailable = BigInt(wallet.availableBalance);
@@ -489,6 +501,7 @@ export class EconomyService {
 
       const newAvailable = currentAvailable - holdAmount;
       const newLocked = currentLocked + holdAmount;
+      const totalBalance = newAvailable + newLocked;
 
       const updatedWallet = await activeTx.wallets.updateBalanceWithOptimisticLock(hold.userId, {
         availableBalance: newAvailable,
@@ -510,20 +523,41 @@ export class EconomyService {
       }
 
       const transactionId = crypto.randomUUID();
-      const ledgerEntry = await activeTx.ledger.recordEntry({
-        transactionId,
-        userId: hold.userId,
-        amount: -holdAmount,
-        balanceAfter: newAvailable,
-        class: 'SPECIAL',
-        type: 'hold.activate',
-        source: 'escrow',
-        referenceId: holdId,
-        counterparty: null,
-        metadata: { holdId, purpose: hold.purpose },
-        idempotencyKey: null,
-        configVersion: null,
-      });
+      let ledgerEntry;
+      try {
+        ledgerEntry = await activeTx.ledger.recordEntry({
+          transactionId,
+          userId: hold.userId,
+          amount: 0n, // Internal lock shift: total value unchanged!
+          balanceAfter: totalBalance,
+          class: 'SPECIAL',
+          type: 'hold.activate',
+          source: 'escrow',
+          referenceId: holdId,
+          counterparty: null,
+          metadata: {
+            holdId,
+            purpose: hold.purpose,
+            holdAmount: holdAmount.toString(),
+            previousAvailable: currentAvailable.toString(),
+            previousLocked: currentLocked.toString(),
+            newAvailable: newAvailable.toString(),
+            newLocked: newLocked.toString(),
+            totalBalance: totalBalance.toString(),
+            ...metadata,
+          },
+          idempotencyKey: effectiveKey,
+          configVersion: null,
+        });
+      } catch (err) {
+        if (err.code === '23505' && (err.constraint === LEDGER_IDEMPOTENCY_UNIQUE_CONSTRAINT || err.message?.includes('uq_v2_ledger_entries_user_idempotency'))) {
+          // Idempotent retry: return current active state
+          const userEntries = await activeTx.ledger.getByUserId(hold.userId);
+          const existingEntry = userEntries.find(e => e.idempotencyKey === effectiveKey);
+          return { hold: updatedHold, wallet: updatedWallet, ledgerEntry: existingEntry || null };
+        }
+        throw err;
+      }
 
       const event = createDomainEvent({
         eventType: EVENT_TYPES.HOLD_ACTIVATED,
@@ -536,6 +570,8 @@ export class EconomyService {
           status: HOLD_STATUSES.ACTIVE,
           availableBalance: newAvailable.toString(),
           lockedBalance: newLocked.toString(),
+          totalBalance: totalBalance.toString(),
+          idempotencyKey: effectiveKey,
         },
       });
       activeTx.outbox.record(event);
@@ -546,12 +582,16 @@ export class EconomyService {
 
   /**
    * Holds / Escrow Lifecycle: 3a. RELEASE HOLD (ACTIVE -> RELEASED)
-   * Restores locked value back to available_balance.
+   * Internal unlock movement: restores locked value back to available_balance.
+   * Total wallet balance (available + locked) remains unchanged; ledger amount = 0n.
+   * Idempotency: deterministic key `hold:${holdId}:release` (or caller-provided).
    */
-  async releaseHold({ holdId, userId, metadata = {} }, tx = null) {
+  async releaseHold({ holdId, userId, idempotencyKey = null, metadata = {} }, tx = null) {
     if (!holdId || typeof holdId !== 'string') {
       throw new Error('Valid holdId required to release hold.');
     }
+
+    const effectiveKey = idempotencyKey || `hold:${holdId}:release`;
 
     return await this._withTx(tx, async (activeTx) => {
       const hold = await activeTx.holds.getById(holdId);
@@ -561,13 +601,21 @@ export class EconomyService {
       if (userId && hold.userId !== userId) {
         throw new Error(`Hold "${holdId}" belongs to user "${hold.userId}", not "${userId}".`);
       }
-      if (hold.status !== HOLD_STATUSES.ACTIVE) {
-        throw new InvalidHoldStatusError(holdId, hold.status, HOLD_STATUSES.RELEASED, 'release hold');
-      }
 
       const wallet = await activeTx.wallets.getByUserId(hold.userId);
       if (!wallet) {
         throw new WalletNotFoundError(hold.userId);
+      }
+
+      // Idempotency check: if hold is ALREADY RELEASED, return existing state
+      if (hold.status === HOLD_STATUSES.RELEASED) {
+        const userEntries = await activeTx.ledger.getByUserId(hold.userId);
+        const existingEntry = userEntries.find(e => e.idempotencyKey === effectiveKey || (e.referenceId === holdId && e.type === 'hold.release'));
+        return { hold, wallet, ledgerEntry: existingEntry || null };
+      }
+
+      if (hold.status !== HOLD_STATUSES.ACTIVE) {
+        throw new InvalidHoldStatusError(holdId, hold.status, HOLD_STATUSES.RELEASED, 'release hold');
       }
 
       const currentAvailable = BigInt(wallet.availableBalance);
@@ -580,6 +628,7 @@ export class EconomyService {
 
       const newLocked = currentLocked - holdAmount;
       const newAvailable = currentAvailable + holdAmount;
+      const totalBalance = newAvailable + newLocked;
 
       const updatedWallet = await activeTx.wallets.updateBalanceWithOptimisticLock(hold.userId, {
         availableBalance: newAvailable,
@@ -602,20 +651,41 @@ export class EconomyService {
       }
 
       const transactionId = crypto.randomUUID();
-      const ledgerEntry = await activeTx.ledger.recordEntry({
-        transactionId,
-        userId: hold.userId,
-        amount: holdAmount,
-        balanceAfter: newAvailable,
-        class: 'SPECIAL',
-        type: 'hold.release',
-        source: 'escrow',
-        referenceId: holdId,
-        counterparty: null,
-        metadata: { holdId, purpose: hold.purpose, ...metadata },
-        idempotencyKey: null,
-        configVersion: null,
-      });
+      let ledgerEntry;
+      try {
+        ledgerEntry = await activeTx.ledger.recordEntry({
+          transactionId,
+          userId: hold.userId,
+          amount: 0n, // Internal unlock shift: total value unchanged!
+          balanceAfter: totalBalance,
+          class: 'SPECIAL',
+          type: 'hold.release',
+          source: 'escrow',
+          referenceId: holdId,
+          counterparty: null,
+          metadata: {
+            holdId,
+            purpose: hold.purpose,
+            holdAmount: holdAmount.toString(),
+            previousAvailable: currentAvailable.toString(),
+            previousLocked: currentLocked.toString(),
+            newAvailable: newAvailable.toString(),
+            newLocked: newLocked.toString(),
+            totalBalance: totalBalance.toString(),
+            ...metadata,
+          },
+          idempotencyKey: effectiveKey,
+          configVersion: null,
+        });
+      } catch (err) {
+        if (err.code === '23505' && (err.constraint === LEDGER_IDEMPOTENCY_UNIQUE_CONSTRAINT || err.message?.includes('uq_v2_ledger_entries_user_idempotency'))) {
+          // Idempotent retry: return current released state
+          const userEntries = await activeTx.ledger.getByUserId(hold.userId);
+          const existingEntry = userEntries.find(e => e.idempotencyKey === effectiveKey);
+          return { hold: updatedHold, wallet: updatedWallet, ledgerEntry: existingEntry || null };
+        }
+        throw err;
+      }
 
       const event = createDomainEvent({
         eventType: EVENT_TYPES.HOLD_RELEASED,
@@ -628,6 +698,8 @@ export class EconomyService {
           status: HOLD_STATUSES.RELEASED,
           availableBalance: newAvailable.toString(),
           lockedBalance: newLocked.toString(),
+          totalBalance: totalBalance.toString(),
+          idempotencyKey: effectiveKey,
         },
       });
       activeTx.outbox.record(event);
@@ -638,12 +710,16 @@ export class EconomyService {
 
   /**
    * Holds / Escrow Lifecycle: 3b. CAPTURE HOLD (ACTIVE -> CAPTURED)
-   * Deducts locked value and optionally credits counterparty recipient.
+   * Settles escrow: deducts locked balance from source account (amount = -holdAmount).
+   * If targetUserId is provided, credits target account (amount = +holdAmount), conserving value exactly across accounts.
+   * Idempotency: deterministic key `hold:${holdId}:capture` (or caller-provided).
    */
-  async captureHold({ holdId, userId, targetUserId = null, metadata = {} }, tx = null) {
+  async captureHold({ holdId, userId, targetUserId = null, idempotencyKey = null, metadata = {} }, tx = null) {
     if (!holdId || typeof holdId !== 'string') {
       throw new Error('Valid holdId required to capture hold.');
     }
+
+    const effectiveKey = idempotencyKey || `hold:${holdId}:capture`;
 
     return await this._withTx(tx, async (activeTx) => {
       const hold = await activeTx.holds.getById(holdId);
@@ -653,13 +729,30 @@ export class EconomyService {
       if (userId && hold.userId !== userId) {
         throw new Error(`Hold "${holdId}" belongs to user "${hold.userId}", not "${userId}".`);
       }
-      if (hold.status !== HOLD_STATUSES.ACTIVE) {
-        throw new InvalidHoldStatusError(holdId, hold.status, HOLD_STATUSES.CAPTURED, 'capture hold');
-      }
 
       const userWallet = await activeTx.wallets.getByUserId(hold.userId);
       if (!userWallet) {
         throw new WalletNotFoundError(hold.userId);
+      }
+
+      // Idempotency check: if hold is ALREADY CAPTURED, return existing state
+      if (hold.status === HOLD_STATUSES.CAPTURED) {
+        const userEntries = await activeTx.ledger.getByUserId(hold.userId);
+        const existingUserEntry = userEntries.find(e => e.idempotencyKey === effectiveKey || (e.referenceId === holdId && e.type === 'hold.capture'));
+        let targetWallet = null;
+        if (targetUserId) {
+          targetWallet = await activeTx.wallets.getByUserId(targetUserId);
+        }
+        return {
+          hold,
+          wallet: userWallet,
+          targetWallet,
+          ledgerEntries: existingUserEntry ? [existingUserEntry] : [],
+        };
+      }
+
+      if (hold.status !== HOLD_STATUSES.ACTIVE) {
+        throw new InvalidHoldStatusError(holdId, hold.status, HOLD_STATUSES.CAPTURED, 'capture hold');
       }
 
       const userAvailable = BigInt(userWallet.availableBalance);
@@ -671,6 +764,8 @@ export class EconomyService {
       }
 
       const newUserLocked = userLocked - holdAmount;
+      const newTotalUserBalance = userAvailable + newUserLocked;
+
       const updatedUserWallet = await activeTx.wallets.updateBalanceWithOptimisticLock(hold.userId, {
         availableBalance: userAvailable,
         lockedBalance: newUserLocked,
@@ -714,37 +809,73 @@ export class EconomyService {
       }
 
       const transactionId = crypto.randomUUID();
+      let userLedgerEntry;
 
-      const userLedgerEntry = await activeTx.ledger.recordEntry({
-        transactionId,
-        userId: hold.userId,
-        amount: -holdAmount,
-        balanceAfter: userAvailable,
-        class: 'SPECIAL',
-        type: 'hold.capture',
-        source: 'escrow',
-        referenceId: holdId,
-        counterparty: targetUserId,
-        metadata: { holdId, purpose: hold.purpose, targetUserId, ...metadata },
-        idempotencyKey: null,
-        configVersion: null,
-      });
-
-      if (targetUserId && updatedTargetWallet) {
-        targetLedgerEntry = await activeTx.ledger.recordEntry({
+      try {
+        userLedgerEntry = await activeTx.ledger.recordEntry({
           transactionId,
-          userId: targetUserId,
-          amount: holdAmount,
-          balanceAfter: BigInt(updatedTargetWallet.availableBalance),
+          userId: hold.userId,
+          amount: -holdAmount, // Net settlement debit from total wallet balance
+          balanceAfter: newTotalUserBalance,
           class: 'SPECIAL',
           type: 'hold.capture',
           source: 'escrow',
           referenceId: holdId,
-          counterparty: hold.userId,
-          metadata: { holdId, purpose: hold.purpose, sourceUserId: hold.userId, ...metadata },
-          idempotencyKey: null,
+          counterparty: targetUserId,
+          metadata: {
+            holdId,
+            purpose: hold.purpose,
+            targetUserId,
+            previousAvailable: userAvailable.toString(),
+            previousLocked: userLocked.toString(),
+            newAvailable: userAvailable.toString(),
+            newLocked: newUserLocked.toString(),
+            totalBalance: newTotalUserBalance.toString(),
+            ...metadata,
+          },
+          idempotencyKey: effectiveKey,
           configVersion: null,
         });
+
+        if (targetUserId && updatedTargetWallet) {
+          const targetAvailable = BigInt(updatedTargetWallet.availableBalance);
+          const targetLocked = BigInt(updatedTargetWallet.lockedBalance);
+          targetLedgerEntry = await activeTx.ledger.recordEntry({
+            transactionId,
+            userId: targetUserId,
+            amount: holdAmount, // Net credit to target account
+            balanceAfter: targetAvailable + targetLocked,
+            class: 'SPECIAL',
+            type: 'hold.capture',
+            source: 'escrow',
+            referenceId: holdId,
+            counterparty: hold.userId,
+            metadata: {
+              holdId,
+              purpose: hold.purpose,
+              sourceUserId: hold.userId,
+              newAvailable: targetAvailable.toString(),
+              newLocked: targetLocked.toString(),
+              totalBalance: (targetAvailable + targetLocked).toString(),
+              ...metadata,
+            },
+            idempotencyKey: null,
+            configVersion: null,
+          });
+        }
+      } catch (err) {
+        if (err.code === '23505' && (err.constraint === LEDGER_IDEMPOTENCY_UNIQUE_CONSTRAINT || err.message?.includes('uq_v2_ledger_entries_user_idempotency'))) {
+          // Idempotent retry: return current captured state
+          const userEntries = await activeTx.ledger.getByUserId(hold.userId);
+          const existingEntry = userEntries.find(e => e.idempotencyKey === effectiveKey);
+          return {
+            hold: updatedHold,
+            wallet: updatedUserWallet,
+            targetWallet: updatedTargetWallet,
+            ledgerEntries: existingEntry ? [existingEntry] : [],
+          };
+        }
+        throw err;
       }
 
       const event = createDomainEvent({
@@ -757,6 +888,8 @@ export class EconomyService {
           amount: holdAmount.toString(),
           purpose: hold.purpose,
           status: HOLD_STATUSES.CAPTURED,
+          sourceTotalBalance: newTotalUserBalance.toString(),
+          idempotencyKey: effectiveKey,
         },
       });
       activeTx.outbox.record(event);

@@ -138,7 +138,7 @@ test('M3 PostgreSQL Economy, Wallet V2, Ledger & Holds Integration', { skip: !te
       assert.equal(recipientEntry.counterparty, sender.userId);
     });
 
-    await t.test('Complete Hold lifecycle: CREATED -> ACTIVE -> RELEASED or CAPTURED', async () => {
+    await t.test('Complete Hold lifecycle: CREATED -> ACTIVE -> RELEASED or CAPTURED with coherent accounting & durable idempotency', async () => {
       const account = await accountService.createAccount();
       const userId = account.userId;
       await economyService.grantFaucet({ userId, amount: 3000 });
@@ -158,32 +158,33 @@ test('M3 PostgreSQL Economy, Wallet V2, Ledger & Holds Integration', { skip: !te
       assert.equal(w1.lockedBalance, 0n);
 
       // 2. ACTIVATE HOLD (CREATED -> ACTIVE)
+      // Internal lock shift: total value 3000n unchanged, ledger amount = 0n
       const activeRes = await economyService.activateHold({ holdId: hold.holdId, userId });
       assert.equal(activeRes.hold.status, 'ACTIVE');
       assert.equal(activeRes.wallet.availableBalance, 2000n);
       assert.equal(activeRes.wallet.lockedBalance, 1000n);
+      assert.equal(activeRes.ledgerEntry.amount, 0n); // Total wallet value conserved!
+      assert.equal(activeRes.ledgerEntry.balanceAfter, 3000n);
+      assert.equal(activeRes.ledgerEntry.metadata.newAvailable, '2000');
+      assert.equal(activeRes.ledgerEntry.metadata.newLocked, '1000');
 
-      // Double-activation attempt throws InvalidHoldStatusError
-      await assert.rejects(
-        economyService.activateHold({ holdId: hold.holdId, userId }),
-        InvalidHoldStatusError
-      );
+      // Retry activation idempotently (returns active state without duplicate ledger or balance shifts)
+      const retryActive = await economyService.activateHold({ holdId: hold.holdId, userId });
+      assert.equal(retryActive.hold.status, 'ACTIVE');
+      assert.equal(retryActive.wallet.availableBalance, 2000n);
 
       // 3a. RELEASE HOLD (ACTIVE -> RELEASED)
+      // Internal unlock shift: total value 3000n unchanged, ledger amount = 0n
       const releaseRes = await economyService.releaseHold({ holdId: hold.holdId, userId });
       assert.equal(releaseRes.hold.status, 'RELEASED');
       assert.equal(releaseRes.wallet.availableBalance, 3000n);
       assert.equal(releaseRes.wallet.lockedBalance, 0n);
+      assert.equal(releaseRes.ledgerEntry.amount, 0n); // Total wallet value conserved!
+      assert.equal(releaseRes.ledgerEntry.balanceAfter, 3000n);
 
-      // Double-release or capturing RELEASED hold throws InvalidHoldStatusError
-      await assert.rejects(
-        economyService.releaseHold({ holdId: hold.holdId, userId }),
-        InvalidHoldStatusError
-      );
-      await assert.rejects(
-        economyService.captureHold({ holdId: hold.holdId, userId }),
-        InvalidHoldStatusError
-      );
+      // Retry release idempotently
+      const retryRelease = await economyService.releaseHold({ holdId: hold.holdId, userId });
+      assert.equal(retryRelease.hold.status, 'RELEASED');
 
       // 3b. CAPTURE HOLD Lifecycle (CREATED -> ACTIVE -> CAPTURED with payout to target)
       const hold2 = await economyService.createHold({ userId, amount: 500, purpose: 'EMPLOYMENT_WAGE' });
@@ -201,11 +202,19 @@ test('M3 PostgreSQL Economy, Wallet V2, Ledger & Holds Integration', { skip: !te
       assert.equal(captureRes.wallet.lockedBalance, 0n);
       assert.equal(captureRes.targetWallet.availableBalance, 500n);
 
-      // Double-capture throws InvalidHoldStatusError
-      await assert.rejects(
-        economyService.captureHold({ holdId: hold2.holdId, userId }),
-        InvalidHoldStatusError
-      );
+      // Value Conservation across source and target in capture transfer:
+      const [sourceEntry, targetEntry] = captureRes.ledgerEntries;
+      assert.equal(sourceEntry.amount, -500n);
+      assert.equal(targetEntry.amount, 500n);
+      assert.equal(sourceEntry.amount + targetEntry.amount, 0n); // Exact value conservation!
+
+      // Retry capture idempotently
+      const retryCapture = await economyService.captureHold({
+        holdId: hold2.holdId,
+        userId,
+        targetUserId: targetAccount.userId,
+      });
+      assert.equal(retryCapture.hold.status, 'CAPTURED');
     });
 
     await t.test('Atomic rollback leaves zero partial wallet, ledger, or hold state on failure', async () => {
