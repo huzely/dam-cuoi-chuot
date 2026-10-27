@@ -1,19 +1,19 @@
 {
   "schema_version": 2,
-  "generation": 4,
+  "generation": 5,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M3",
   "milestone_title": "M3 — Wallet V2 + Ledger + Holds",
   "status": "IN_PROGRESS",
   "jules_session_id": "9668882045283125937",
   "approved_plan_id": "cb4ac82425b445718732b8e1dc873914",
-  "pr_number": 6,
+  "pr_number": 7,
   "control_pr_number": 6,
-  "implementation_pr_number": null,
+  "implementation_pr_number": 7,
   "starting_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
   "expected_start_sha": "737097483495f1d650110a18788a21db62f71bba",
-  "expected_base_branch": "jules-13026570411885116826-d6b9e06f",
-  "expected_base_sha": "bd2f7f4d068b5f979dc8f8a69dd4040091564f3d",
+  "expected_base_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
+  "expected_base_sha": "737097483495f1d650110a18788a21db62f71bba",
   "previous_milestone": {
     "milestone": "M2.2",
     "status": "PASS",
@@ -22,7 +22,7 @@
     "accepted_head_sha": "737097483495f1d650110a18788a21db62f71bba",
     "accepted_ci_run_id": 40470149525
   },
-  "live_head_source": "jules_session_until_pr_created",
+  "live_head_source": "github_pr",
   "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
