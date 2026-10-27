@@ -132,15 +132,3 @@ jobs:
           fi
           [[ "$code" -ge 200 && "$code" -lt 300 ]] || { cat /tmp/result.json; exit 1; }
           jq '{id,title,state,url}' /tmp/result.json
-
-      - name: Acknowledge accepted command
-        if: ${{ success() }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.reactions.createForIssueComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: context.payload.comment.id,
-              content: '+1'
-            })
