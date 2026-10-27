@@ -9,6 +9,8 @@ import { MissingDatabaseDriverError, computeCanonicalFingerprint } from './pg-id
 import { IdempotencyMismatchError, ConcurrentExecutionError } from '../core/idempotency.js';
 import { assertPermission, createAdminAuditEvent } from '../core/rbac.js';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export class PgDriver {
   /**
    * @param {Object|string} config - Connection configuration or connection string
@@ -171,6 +173,63 @@ export class PgTxContext {
     this.client = client;
     this.stagedOutboxEvents = [];
     this.allStagedEventsForPublication = [];
+
+    this.accounts = {
+      create: async ({ state = 'ACTIVE' } = {}) => {
+        const res = await this.client.query(
+          `INSERT INTO public.v2_accounts (state)
+           VALUES ($1)
+           RETURNING user_id, state, created_at, updated_at`,
+          [state]
+        );
+        const row = res.rows[0];
+        return {
+          userId: row.user_id,
+          state: row.state,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+      getById: async (userId) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+          return null;
+        }
+        const res = await this.client.query(
+          `SELECT user_id, state, created_at, updated_at
+           FROM public.v2_accounts
+           WHERE user_id = $1::uuid`,
+          [userId]
+        );
+        if (res.rows.length === 0) return null;
+        const row = res.rows[0];
+        return {
+          userId: row.user_id,
+          state: row.state,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+      updateState: async (userId, state) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+          return null;
+        }
+        const res = await this.client.query(
+          `UPDATE public.v2_accounts
+           SET state = $2, updated_at = NOW()
+           WHERE user_id = $1::uuid
+           RETURNING user_id, state, created_at, updated_at`,
+          [userId, state]
+        );
+        if (res.rows.length === 0) return null;
+        const row = res.rows[0];
+        return {
+          userId: row.user_id,
+          state: row.state,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+    };
 
     this.featureFlags = {
       set: async (flagKey, enabled) => {

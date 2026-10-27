@@ -6,12 +6,13 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const migrationPath = path.resolve(__dirname, '../migrations/001_v2_foundation_schema.sql');
+const migration001Path = path.resolve(__dirname, '../migrations/001_v2_foundation_schema.sql');
+const migration002Path = path.resolve(__dirname, '../migrations/002_v2_account_identity_schema.sql');
 
 test('Schema Migration Static Verification: 001_v2_foundation_schema.sql format & integrity', () => {
-  assert.ok(fs.existsSync(migrationPath), 'Migration file 001_v2_foundation_schema.sql must exist');
+  assert.ok(fs.existsSync(migration001Path), 'Migration file 001_v2_foundation_schema.sql must exist');
 
-  const sqlContent = fs.readFileSync(migrationPath, 'utf8');
+  const sqlContent = fs.readFileSync(migration001Path, 'utf8');
 
   // Verify V2 tables are declared
   assert.ok(sqlContent.includes('v2_idempotency'), 'v2_idempotency table must be declared');
@@ -58,6 +59,48 @@ test('Schema Migration Static Verification: 001_v2_foundation_schema.sql format 
       sqlContent.includes(`ALTER TABLE ${legacyTable}`) || sqlContent.includes(`ALTER TABLE public.${legacyTable}`),
       false,
       `Migration must not alter legacy table ${legacyTable}`
+    );
+  }
+});
+
+test('Schema Migration Static Verification: 002_v2_account_identity_schema.sql format & integrity', () => {
+  assert.ok(fs.existsSync(migration002Path), 'Migration file 002_v2_account_identity_schema.sql must exist');
+
+  const sqlContent = fs.readFileSync(migration002Path, 'utf8');
+
+  // Verify Account table is declared
+  assert.ok(sqlContent.includes('v2_accounts'), 'v2_accounts table must be declared');
+
+  // Verify UUID primary key
+  assert.ok(
+    sqlContent.includes('user_id UUID PRIMARY KEY DEFAULT gen_random_uuid()'),
+    'v2_accounts must declare UUID primary key default gen_random_uuid()'
+  );
+
+  // Verify RLS is enabled
+  assert.ok(
+    sqlContent.includes('ALTER TABLE public.v2_accounts ENABLE ROW LEVEL SECURITY;'),
+    'v2_accounts must enable RLS'
+  );
+
+  // Verify privilege scoping (REVOKE direct client writes)
+  assert.ok(
+    sqlContent.includes('REVOKE INSERT, UPDATE, DELETE ON public.v2_accounts'),
+    'v2_accounts must revoke direct client writes'
+  );
+
+  // Verify non-destructive guarantee: NO DROP or ALTER on legacy tables
+  const legacyTables = ['dcc_saves', 'dcc_rank', 'dcc_rank_review', 'dcc_ho_so'];
+  for (const legacyTable of legacyTables) {
+    assert.equal(
+      sqlContent.includes(`DROP TABLE ${legacyTable}`) || sqlContent.includes(`DROP TABLE public.${legacyTable}`),
+      false,
+      `Migration 002 must not drop legacy table ${legacyTable}`
+    );
+    assert.equal(
+      sqlContent.includes(`ALTER TABLE ${legacyTable}`) || sqlContent.includes(`ALTER TABLE public.${legacyTable}`),
+      false,
+      `Migration 002 must not alter legacy table ${legacyTable}`
     );
   }
 });

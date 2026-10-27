@@ -82,7 +82,6 @@ test('Security Static Scan 4: Production Pg adapters fail fast without silent me
     const content = fs.readFileSync(filePath, 'utf8');
     const relativePath = path.relative(v2RootDir, filePath);
 
-    // Verify all Pg* adapter classes in adapters/ require dbClient and throw MissingDatabaseDriverError
     if (content.includes('export class Pg') && !relativePath.includes('pg-driver.js')) {
       assert.ok(
         content.includes('MissingDatabaseDriverError'),
@@ -145,4 +144,22 @@ test('Security Static Scan 7: No post-COMMIT mutation hooks in PgTransactionAdap
     false,
     'Architecture Violation: Authoritative mutations must not use onCommit hooks'
   );
+});
+
+test('Security Static Scan 8: No OAuth credentials or secrets stored in V2 identity mapping tables', () => {
+  const identityFiles = getAllFiles(path.join(v2RootDir, 'domains/identity')).filter(f => f.endsWith('.js'));
+  const forbiddenTokens = ['access_token', 'refresh_token', 'oauth_token', 'password_hash', 'client_secret'];
+
+  for (const filePath of identityFiles) {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const relativePath = path.relative(v2RootDir, filePath);
+
+    for (const token of forbiddenTokens) {
+      assert.equal(
+        content.toLowerCase().includes(token),
+        false,
+        `Security Violation: Forbidden credential token reference "${token}" found in ${relativePath}`
+      );
+    }
+  }
 });

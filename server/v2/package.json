@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:unit",
-    "test:unit": "node --test tests/admin.test.js tests/command.test.js tests/config.test.js tests/feature-flags.test.js tests/idempotency.test.js tests/outbox.test.js tests/pg-adapter-contracts.test.js tests/pg-schema-migration.test.js tests/rbac.test.js tests/security-static.test.js",
+    "test:unit": "node --test tests/account-identity.test.js tests/admin.test.js tests/command.test.js tests/config.test.js tests/feature-flags.test.js tests/idempotency.test.js tests/outbox.test.js tests/pg-adapter-contracts.test.js tests/pg-schema-migration.test.js tests/rbac.test.js tests/security-static.test.js",
     "test:integration": "node --test tests/postgres-integration.test.js"
   },
   "dependencies": {

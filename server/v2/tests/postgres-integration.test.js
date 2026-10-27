@@ -8,6 +8,7 @@ import { PgDriver, PgTxContext, assertSafeTestDatabaseUrl } from '../adapters/pg
 import { PgAdminPersistence } from '../adapters/pg-admin-persistence.js';
 import { PgOutboxPublisher } from '../adapters/pg-outbox.js';
 import { AdminService, ADMIN_COMMAND_TYPES } from '../domains/admin/service.js';
+import { AccountService, AccountNotFoundError } from '../domains/identity/index.js';
 import { QTV_ROLES } from '../core/rbac.js';
 import { createCommand } from '../core/command.js';
 import { createDomainEvent } from '../core/event.js';
@@ -17,7 +18,8 @@ import { IdempotencyMismatchError } from '../core/idempotency.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const migrationPath = path.resolve(__dirname, '../migrations/001_v2_foundation_schema.sql');
+const migration001Path = path.resolve(__dirname, '../migrations/001_v2_foundation_schema.sql');
+const migration002Path = path.resolve(__dirname, '../migrations/002_v2_account_identity_schema.sql');
 
 const testDbUrl = process.env.POSTGRES_TEST_URL || process.env.PGDATABASE_TEST_URL || null;
 
@@ -85,19 +87,43 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
   const pgDriver = new PgDriver({ pool });
   const adminPersistence = new PgAdminPersistence(pgDriver);
   const adminService = new AdminService({ adminPersistence });
+  const accountService = new AccountService({ pgDriver });
 
   try {
-    await t.test('1. Migration 001_v2_foundation_schema.sql applies cleanly to PostgreSQL', async () => {
-      const sqlContent = fs.readFileSync(migrationPath, 'utf8');
+    await t.test('1. Migrations 001 and 002 apply cleanly and idempotently to PostgreSQL', async () => {
+      const sql001 = fs.readFileSync(migration001Path, 'utf8');
+      const sql002 = fs.readFileSync(migration002Path, 'utf8');
       const client = await pool.connect();
       try {
-        await client.query(sqlContent);
+        // Ensure test database has Supabase compatibility roles anon & authenticated if running on non-Supabase test DB (Neon)
+        for (const roleName of ['anon', 'authenticated']) {
+          const checkRes = await client.query(
+            `SELECT 1 FROM pg_roles WHERE rolname = $1`,
+            [roleName]
+          );
+          if (checkRes.rows.length === 0) {
+            try {
+              await client.query(`CREATE ROLE ${roleName} NOLOGIN;`);
+            } catch (err) {
+              throw new Error(
+                `Unable to provision required Supabase compatibility role "${roleName}" on TEST database. ` +
+                `Ensure the test database user has CREATEROLE privileges or pre-provisioned roles. ` +
+                `Original error: ${err.message}`
+              );
+            }
+          }
+        }
+
+        await client.query(sql001);
+        await client.query(sql002);
+        // Rerun migration 002 against the exact same connection to verify idempotency / re-run safety
+        await client.query(sql002);
       } finally {
         client.release();
       }
     });
 
-    await t.test('2. Verify expected V2 tables and constraints exist on PostgreSQL', async () => {
+    await t.test('2. Verify expected V2 tables exist on PostgreSQL', async () => {
       const res = await pool.query(
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'v2_%'`
       );
@@ -108,9 +134,30 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(tables.includes('v2_feature_flags'), true);
       assert.equal(tables.includes('v2_kill_switches'), true);
       assert.equal(tables.includes('v2_admin_audit_logs'), true);
+      assert.equal(tables.includes('v2_accounts'), true);
     });
 
-    await t.test('3. Real PostgreSQL transaction COMMIT and ROLLBACK', async () => {
+    await t.test('3. Real PostgreSQL Account creation & lookup', async () => {
+      const account = await accountService.createAccount({ state: 'ACTIVE' });
+      assert.ok(account.userId);
+      assert.match(account.userId, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+      const found = await accountService.getAccountById(account.userId);
+      assert.ok(found);
+      assert.equal(found.userId, account.userId);
+      assert.equal(found.state, 'ACTIVE');
+
+      // Verify outbox domain event identity.account_created
+      const outboxRes = await pool.query(
+        `SELECT event_type, payload FROM public.v2_outbox WHERE aggregate_id = $1`,
+        [account.userId]
+      );
+      assert.equal(outboxRes.rows.length, 1);
+      assert.equal(outboxRes.rows[0].event_type, 'identity.account_created');
+      assert.equal(outboxRes.rows[0].payload.userId, account.userId);
+    });
+
+    await t.test('4. Real PostgreSQL transaction COMMIT and ROLLBACK', async () => {
       // Test COMMIT
       await pgDriver.withTransaction(async (tx) => {
         await tx.featureFlags.set('ACCOUNT_V2', true);
@@ -131,7 +178,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(rolledBackFlag, true);
     });
 
-    await t.test('4. Atomic state mutation + outbox commit/rollback on PostgreSQL', async () => {
+    await t.test('5. Atomic state mutation + outbox commit/rollback on PostgreSQL', async () => {
       const eventId = `evt_pg_${Date.now()}`;
       await pgDriver.withTransaction(async (tx) => {
         await tx.featureFlags.set('EMPLOYMENT_V2', true);
@@ -151,7 +198,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(outboxRes.rows[0].status, 'COMMITTED_IN_STORAGE');
     });
 
-    await t.test('5. Outbox persistence failure before COMMIT rolls back state mutation on PostgreSQL', async () => {
+    await t.test('6. Outbox persistence failure before COMMIT rolls back state mutation on PostgreSQL', async () => {
       const initialFlag = await pgDriver.withTransaction(async (tx) => tx.featureFlags.get('TAX_V2'));
 
       await assert.rejects(async () => {
@@ -167,7 +214,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(finalFlag, initialFlag);
     });
 
-    await t.test('6. Post-commit publication failure and durable retry status on PostgreSQL', async () => {
+    await t.test('7. Post-commit publication failure and durable retry status on PostgreSQL', async () => {
       const eventId = `evt_pub_${Date.now()}`;
       const domainEvent = createDomainEvent({
         eventId,
@@ -209,13 +256,12 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       const updatedRes = await pool.query(`SELECT status, published_at, last_error FROM public.v2_outbox WHERE event_id = $1`, [eventId]);
       assert.equal(updatedRes.rows[0].status, 'PUBLISHED');
       assert.ok(updatedRes.rows[0].published_at);
-      assert.equal(updatedRes.rows[0].last_error, null); // Last error cleared on success!
+      assert.equal(updatedRes.rows[0].last_error, null);
     });
 
-    await t.test('7. Admin feature flag + audit atomic commit on PostgreSQL', async () => {
+    await t.test('8. Admin feature flag + audit atomic commit on PostgreSQL', async () => {
       const superAdmin = { actorId: 'admin_pg_1', role: QTV_ROLES.SUPER_ADMIN };
 
-      // Successful atomic admin mutation
       const res = await adminService.executeAdminCommand({
         adminActor: superAdmin,
         command: createCommand({
@@ -226,7 +272,6 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       });
       assert.equal(res.success, true);
 
-      // Verify audit record exists in database
       const auditRes = await pool.query(
         `SELECT action, reason FROM public.v2_admin_audit_logs WHERE admin_actor_id = $1 ORDER BY created_at DESC LIMIT 1`,
         ['admin_pg_1']
@@ -235,35 +280,30 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(auditRes.rows[0].reason, 'Live PostgreSQL rollout test');
     });
 
-    await t.test('8. Real Admin Audit Failure Rolls Back Feature Flag Mutation on PostgreSQL', async () => {
+    await t.test('9. Real Admin Audit Failure Rolls Back Feature Flag Mutation on PostgreSQL', async () => {
       const superAdmin = { actorId: 'admin_pg_rollback_test', role: QTV_ROLES.SUPER_ADMIN };
 
-      // Set flag initial state
       await pgDriver.withTransaction(async (tx) => {
         await tx.featureFlags.set('THEFT_V2', false);
       });
 
-      // Force audit failure by attempting invalid NULL action in raw SQL query inside transaction
       await assert.rejects(async () => {
         await pgDriver.withTransaction(async (tx) => {
           await tx.featureFlags.set('THEFT_V2', true);
-          // Force DB NOT NULL constraint violation on v2_admin_audit_logs table
           await tx.client.query(
             `INSERT INTO public.v2_admin_audit_logs (event_id, admin_actor_id, admin_role, action, reason) VALUES ('a_err', 'admin_1', 'SUPER_ADMIN', NULL, 'fail')`
           );
         });
       });
 
-      // Verify THEFT_V2 flag was NOT changed (rolled back!)
       const flagVal = await pgDriver.withTransaction(async (tx) => tx.featureFlags.get('THEFT_V2'));
       assert.equal(flagVal, false);
     });
 
-    await t.test('9. Config DRAFT creation, approval, and APPROVED immutability on PostgreSQL', async () => {
+    await t.test('10. Config DRAFT creation, approval, and APPROVED immutability on PostgreSQL', async () => {
       const econManager = { actorId: 'econ_pg_1', role: QTV_ROLES.ECONOMY_MANAGER };
       const configVersion = `2.0.0-pg-${Date.now()}`;
 
-      // Draft creation
       await adminService.executeAdminCommand({
         adminActor: econManager,
         command: createCommand({
@@ -277,7 +317,6 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
         }),
       });
 
-      // Approval
       await adminService.executeAdminCommand({
         adminActor: econManager,
         command: createCommand({
@@ -287,11 +326,9 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
         }),
       });
 
-      // Assert version status is APPROVED
       const approvedRes = await pgDriver.withTransaction(async (tx) => tx.config.getRulesetByVersion(configVersion));
       assert.equal(approvedRes.status, 'APPROVED');
 
-      // Attempting to overwrite APPROVED version fails
       await assert.rejects(async () => {
         await adminService.executeAdminCommand({
           adminActor: econManager,
@@ -308,7 +345,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       }, /Forbidden Mutation Error/);
     });
 
-    await t.test('10. Durable Kill Switch + audit atomic commit on PostgreSQL', async () => {
+    await t.test('11. Durable Kill Switch + audit atomic commit on PostgreSQL', async () => {
       const secReviewer = { actorId: 'sec_pg_1', role: QTV_ROLES.SECURITY_REVIEWER };
 
       await adminService.executeAdminCommand({
@@ -324,7 +361,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(active, true);
     });
 
-    await t.test('11. Idempotency (actor_id, key) uniqueness, replay, and conflict on PostgreSQL', async () => {
+    await t.test('12. Idempotency (actor_id, key) uniqueness, replay, and conflict on PostgreSQL', async () => {
       const actorA = { actorId: 'actor_pg_A' };
       const actorB = { actorId: 'actor_pg_B' };
       const testKey = `pg_idem_key_${Date.now()}`;
@@ -353,35 +390,31 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
         payload: { boothId: 'b1' },
       });
 
-      // Actor A claims key
       await pgDriver.withTransaction(async (tx) => {
         const claim = await tx.idempotency.claim(testKey, cmdA1);
         assert.equal(claim.status, 'CLAIMED');
         await tx.idempotency.complete('actor_pg_A', testKey, { result: 'A_OK' });
       });
 
-      // Actor A replays same key + same command -> returns cached result
       await pgDriver.withTransaction(async (tx) => {
         const replay = await tx.idempotency.claim(testKey, cmdA2Same);
         assert.equal(replay.status, 'COMPLETED');
         assert.equal(replay.result.result, 'A_OK');
       });
 
-      // Actor A uses same key + different command -> throws IdempotencyMismatchError
       await assert.rejects(async () => {
         await pgDriver.withTransaction(async (tx) => {
           await tx.idempotency.claim(testKey, cmdA2Diff);
         });
       }, IdempotencyMismatchError);
 
-      // Actor B uses same key string independently without conflict
       await pgDriver.withTransaction(async (tx) => {
         const claimB = await tx.idempotency.claim(testKey, cmdB1);
         assert.equal(claimB.status, 'CLAIMED');
       });
     });
 
-    await t.test('12. Real multi-client PostgreSQL controlled concurrent idempotency claim race', async () => {
+    await t.test('13. Real multi-client PostgreSQL controlled concurrent idempotency claim race', async () => {
       const client1 = await pool.connect();
       const client2 = await pool.connect();
 
@@ -403,11 +436,9 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
         const tx1 = new PgTxContext(client1);
         const tx2 = new PgTxContext(client2);
 
-        // 1. Client 1 claims the idempotency key (inserts status = 'PENDING')
         const claim1 = await tx1.idempotency.claim(raceKey, raceCmd);
         assert.equal(claim1.status, 'CLAIMED');
 
-        // Execute handler work on Client 1
         handlerCallCount++;
         await tx1.featureFlags.set('FORTUNE_V2', true);
         const raceEventId = `evt_race_${Date.now()}`;
@@ -418,15 +449,12 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
           actor: raceActor,
         }));
 
-        // 2. Client 2 attempts to claim the EXACT same (actor_id, idempotency_key) concurrently while Client 1 transaction is open
         const client2ClaimPromise = tx2.idempotency.claim(raceKey, raceCmd).catch(err => err);
 
-        // Winner (Client 1) flushes outbox, completes idempotency record, and commits
         await tx1.flushStagedOutbox();
         await tx1.idempotency.complete(raceActor.actorId, raceKey, { ticket: 'winner_ticket_100' });
         await client1.query('COMMIT');
 
-        // Await Client 2's promise after Client 1 commits (Client 2 blocked on row lock until Client 1 commit)
         const client2Result = await client2ClaimPromise;
         assert.ok(client2Result instanceof Error, 'Client 2 claim must result in an error');
         assert.ok(
@@ -434,10 +462,8 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
           'Client 2 receiving concurrent execution or replayed completion'
         );
 
-        // Client 2 MUST ROLLBACK and NOT mutate state
         await client2.query('ROLLBACK');
 
-        // 3. Retry same command after winner COMMIT
         const replayRes = await pgDriver.withTransaction(async (tx) => {
           return await tx.idempotency.claim(raceKey, raceCmd);
         });
@@ -445,7 +471,6 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
         assert.equal(replayRes.status, 'COMPLETED');
         assert.equal(replayRes.result.ticket, 'winner_ticket_100');
 
-        // 4. Verification of exact execution counts and state/outbox singleton invariants
         assert.equal(handlerCallCount, 1, 'Domain handler executed exactly ONCE');
 
         const outboxRows = await pool.query(`SELECT status FROM public.v2_outbox WHERE event_id = $1`, [raceEventId]);
@@ -457,7 +482,7 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       }
     });
 
-    await t.test('13. Real retry worker outbox batch concurrency with SKIP LOCKED on PostgreSQL', async () => {
+    await t.test('14. Real retry worker outbox batch concurrency with SKIP LOCKED on PostgreSQL', async () => {
       const event1Id = `evt_worker_1_${Date.now()}`;
       const event2Id = `evt_worker_2_${Date.now()}`;
 
@@ -474,7 +499,6 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
         }));
       });
 
-      // Two concurrent workers claim batches of 1 record simultaneously
       const [batch1, batch2] = await Promise.all([
         pgDriver.claimRetryableOutboxBatch(1),
         pgDriver.claimRetryableOutboxBatch(1),
@@ -483,13 +507,12 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(batch1.length, 1);
       assert.equal(batch2.length, 1);
 
-      // Verify each worker claimed a DIFFERENT outbox event (no duplicate worker claims!)
       const claimedEvent1 = batch1[0].event.eventId;
       const claimedEvent2 = batch2[0].event.eventId;
       assert.notEqual(claimedEvent1, claimedEvent2);
     });
 
-    await t.test('14. End-to-end production command pipeline execution and replay on PostgreSQL', async () => {
+    await t.test('15. End-to-end production command pipeline execution and replay on PostgreSQL', async () => {
       const actor = { actorId: 'usr_e2e_1' };
       const e2eKey = `idem_e2e_${Date.now()}`;
       const e2eCmd = createCommand({
@@ -499,7 +522,6 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
         payload: { boothId: 'b_e2e' },
       });
 
-      // Execute pipeline
       const pipelineRes = await executePipeline({
         command: e2eCmd,
         pgDriver,
@@ -517,7 +539,6 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       assert.equal(pipelineRes.replayed, false);
       assert.equal(pipelineRes.result.status, 'ENTERED');
 
-      // Replay pipeline call -> returns replayed without duplicate execution
       const replayRes = await executePipeline({
         command: e2eCmd,
         pgDriver,
@@ -532,5 +553,6 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
 
   } finally {
     await pgDriver.close();
+    await pool.end();
   }
 });
