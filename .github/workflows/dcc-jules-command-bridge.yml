@@ -67,19 +67,31 @@ jobs:
           state_milestone=$(jq -r '.milestone' /tmp/state.json)
           state_pr=$(jq -r '.pr_number' /tmp/state.json)
           state_session=$(jq -r '.jules_session_id' /tmp/state.json)
+          command_bus_pr=$(jq -r '.coordination.command_bus_pr_number // .control_pr_number // .pr_number' /tmp/state.json)
+          implementation_pr=$(jq -r '.implementation_pr_number // empty' /tmp/state.json)
           expected_base_branch=$(jq -r '.expected_base_branch' /tmp/state.json)
           expected_base_sha=$(jq -r '.expected_base_sha' /tmp/state.json)
           next_session_allowed=$(jq -r '.next_session_allowed // false' /tmp/state.json)
 
+          neutral_skip() {
+            echo "$1"
+            echo 'execute=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
           case "$action" in
-            status|approve-plan|send-message|verify-ci)
-              [[ "$ISSUE_NUMBER" == "$state_pr" ]] || { echo "Stale/wrong PR: command on #$ISSUE_NUMBER, active PR is #$state_pr"; exit 1; }
+            status|approve-plan|send-message|create-session)
+              [[ "$ISSUE_NUMBER" == "$command_bus_pr" ]] || neutral_skip "Stale/wrong command-bus PR: command on #$ISSUE_NUMBER, checkpoint command bus is #$command_bus_pr"
+              ;;
+            verify-ci)
+              test -n "$implementation_pr" && test "$implementation_pr" != null || neutral_skip 'No active implementation PR available for exact-head CI.'
+              [[ "$ISSUE_NUMBER" == "$implementation_pr" ]] || neutral_skip "Stale/wrong implementation PR: verify-ci on #$ISSUE_NUMBER, active implementation PR is #$implementation_pr"
               ;;
           esac
 
           case "$action" in
             status|approve-plan|send-message)
-              [[ "$session_id" == "$state_session" ]] || { echo "Stale/wrong Jules session: $session_id, active is $state_session"; exit 1; }
+              [[ "$session_id" == "$state_session" ]] || neutral_skip "Stale/wrong Jules session: $session_id, active is $state_session"
               ;;
           esac
 
@@ -91,7 +103,7 @@ jobs:
           if [[ "$mutating" == true ]]; then
             test -n "$generation" || { echo 'generation is required for mutating commands'; exit 1; }
             test -n "$command_key" || { echo 'command_key is required for mutating commands'; exit 1; }
-            [[ "$generation" == "$state_generation" ]] || { echo "Stale generation $generation; current generation is $state_generation"; exit 1; }
+            [[ "$generation" == "$state_generation" ]] || neutral_skip "Stale generation $generation; current generation is $state_generation"
 
             gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments?per_page=100" > /tmp/comments.json
             duplicate=$(jq -r --arg key "$command_key" --argjson current "$COMMENT_ID" '
@@ -104,9 +116,7 @@ jobs:
               ] | length > 0
             ' /tmp/comments.json)
             if [[ "$duplicate" == true ]]; then
-              echo "Duplicate command_key suppressed: $command_key"
-              echo 'execute=false' >> "$GITHUB_OUTPUT"
-              exit 0
+              neutral_skip "Duplicate command_key suppressed: $command_key"
             fi
           fi
 
@@ -125,6 +135,9 @@ jobs:
             echo 'execute=true'
             echo "generation=$state_generation"
             echo "milestone=$state_milestone"
+            echo "state_pr=$state_pr"
+            echo "command_bus_pr=$command_bus_pr"
+            echo "implementation_pr=$implementation_pr"
             echo "expected_base_branch=$expected_base_branch"
             echo "expected_base_sha=$expected_base_sha"
           } >> "$GITHUB_OUTPUT"
@@ -231,7 +244,7 @@ jobs:
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.issue.number }}
+          PR_NUMBER: ${{ steps.guard.outputs.implementation_pr }}
           EXPECTED_BASE_BRANCH: ${{ steps.guard.outputs.expected_base_branch }}
           EXPECTED_BASE_SHA: ${{ steps.guard.outputs.expected_base_sha }}
         shell: bash
