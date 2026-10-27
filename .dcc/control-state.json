@@ -1,0 +1,14 @@
+{
+  "milestone": "M2.2",
+  "status": "IN_PROGRESS",
+  "jules_session_id": "3617877269471098838",
+  "pr_number": 6,
+  "expected_base_branch": "jules-13026570411885116826-d6b9e06f",
+  "expected_base_sha": "bd2f7f4d068b5f979dc8f8a69dd4040091564f3d",
+  "rules": {
+    "reuse_current_session_until_pass": true,
+    "reuse_current_pr_until_pass": true,
+    "production_allowed": false,
+    "production_db_allowed": false
+  }
+}
