@@ -174,6 +174,61 @@ export class PgTxContext {
     this.stagedOutboxEvents = [];
     this.allStagedEventsForPublication = [];
 
+    this.providerIdentities = {
+      link: async ({ provider, providerSubject, userId }) => {
+        const res = await this.client.query(
+          `INSERT INTO public.v2_provider_identities (provider, provider_subject, user_id)
+           VALUES ($1, $2, $3::uuid)
+           RETURNING provider, provider_subject, user_id, created_at, linked_at`,
+          [provider, providerSubject, userId]
+        );
+        const row = res.rows[0];
+        return {
+          provider: row.provider,
+          providerSubject: row.provider_subject,
+          userId: row.user_id,
+          createdAt: row.created_at,
+          linkedAt: row.linked_at,
+        };
+      },
+      resolve: async (provider, providerSubject) => {
+        const res = await this.client.query(
+          `SELECT provider, provider_subject, user_id, created_at, linked_at
+           FROM public.v2_provider_identities
+           WHERE provider = $1 AND provider_subject = $2`,
+          [provider, providerSubject]
+        );
+        if (res.rows.length === 0) return null;
+        const row = res.rows[0];
+        return {
+          provider: row.provider,
+          providerSubject: row.provider_subject,
+          userId: row.user_id,
+          createdAt: row.created_at,
+          linkedAt: row.linked_at,
+        };
+      },
+      getByUser: async (userId) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+          return [];
+        }
+        const res = await this.client.query(
+          `SELECT provider, provider_subject, user_id, created_at, linked_at
+           FROM public.v2_provider_identities
+           WHERE user_id = $1::uuid
+           ORDER BY created_at ASC`,
+          [userId]
+        );
+        return res.rows.map(row => ({
+          provider: row.provider,
+          providerSubject: row.provider_subject,
+          userId: row.user_id,
+          createdAt: row.created_at,
+          linkedAt: row.linked_at,
+        }));
+      },
+    };
+
     this.accounts = {
       create: async ({ state = 'ACTIVE' } = {}) => {
         const res = await this.client.query(
