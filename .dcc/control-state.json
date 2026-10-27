@@ -1,14 +1,34 @@
 {
+  "schema_version": 2,
+  "generation": 1,
+  "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M2.2",
   "status": "IN_PROGRESS",
   "jules_session_id": "3617877269471098838",
   "pr_number": 6,
   "expected_base_branch": "jules-13026570411885116826-d6b9e06f",
   "expected_base_sha": "bd2f7f4d068b5f979dc8f8a69dd4040091564f3d",
+  "live_head_source": "github_pr",
+  "next_session_allowed": false,
+  "coordination": {
+    "authority": "main:.dcc/control-state.json",
+    "transition_mode": "compare_and_swap",
+    "command_bus": "github_pr_issue_comments",
+    "command_prefix": "/dcc-jules ",
+    "require_generation_fence": true,
+    "require_deterministic_command_key": true
+  },
+  "roles": {
+    "jules": "implementation_worker",
+    "github": "mechanical_control_loop",
+    "work": "long_running_operator",
+    "chatgpt": "semantic_auditor_controller"
+  },
   "rules": {
     "reuse_current_session_until_pass": true,
     "reuse_current_pr_until_pass": true,
     "production_allowed": false,
-    "production_db_allowed": false
+    "production_db_allowed": false,
+    "semantic_pass_required_after_ci": true
   }
 }
