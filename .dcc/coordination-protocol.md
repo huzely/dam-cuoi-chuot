@@ -47,13 +47,14 @@ The command bridge must reject stale generations and suppress an earlier duplica
 
 ## Active milestone rules
 
-1. Exactly one Jules session and one active PR are authoritative for a milestone.
+1. Exactly one Jules session and one active implementation PR are authoritative for a milestone once that implementation PR exists. Before it exists, the checkpoint must explicitly remain in a no-implementation-PR phase and any older PR used only as a command bus must never count as implementation evidence.
 2. If Jules is `IN_PROGRESS` and there is no confirmed blocker, do not send messages.
-3. Every new PR head must be verified independently on that exact SHA.
-4. A failed CI/audit correction goes to the same Jules session and existing PR.
+3. Every new implementation PR head must be verified independently on that exact SHA.
+4. A failed CI/audit correction goes to the same Jules session and existing implementation PR.
 5. A milestone is not PASS merely because Jules reports completion or CI is green. Semantic acceptance must also pass.
 6. No next Jules session may be created while `next_session_allowed` is false.
 7. On confirmed quota/rate limit, checkpoint as waiting and retry later; never create a duplicate session.
+8. A Jules session reporting `COMPLETED` before producing the required implementation PR/commits is not milestone completion. Resume the same session with a deterministic command key.
 
 ## Milestone transition protocol
 
@@ -61,10 +62,41 @@ A controller may transition only after independently verifying the exact active 
 
 1. Re-read `control-state.json` and PR metadata.
 2. Verify generation/session/PR/head have not changed underneath the audit.
-3. Update the checkpoint with compare-and-swap, increment `generation`, and set `next_session_allowed=true`, `next_milestone`, and `next_starting_branch`.
+3. Update the checkpoint with compare-and-swap, increment `generation`, record the accepted head/CI evidence, and set `next_session_allowed=true`, `next_milestone`, `next_starting_branch`, and exact next starting SHA.
 4. Only after the new generation is visible may one `create-session` command be issued for the next milestone using a deterministic `command_key` for that generation.
 5. Other agents observing the new generation abandon any pending action created from the previous generation.
-6. After the next session/PR is established, update the checkpoint again with compare-and-swap and set `next_session_allowed=false`.
+6. After the next session is established, update the checkpoint again with compare-and-swap, make that new milestone authoritative, and set `next_session_allowed=false`.
+7. A checkpoint that says the current milestone is PASS while the next roadmap session has not yet been created is an incomplete transition, not an idle/terminal state. The controller/watchdog must finish the handoff in the same control run whenever Jules quota and owner-independent permissions allow.
+8. Do not wait for the owner to say “continue” between milestones. Continue automatically until an owner-only blocker is genuinely unavoidable or the project reaches `READY_FOR_PLAYTEST`.
+
+## Continuous roadmap progression
+
+After semantic + exact-head CI PASS, advance in this frozen order without skipping milestones:
+
+- M3 — Wallet V2 + Ledger + Holds
+- M4 — Progress/Unlock Compatibility
+- M5 — Legacy Migration Engine
+- M6 — Chapter IV Economy Conversion
+- M7 — Profile + Gia sản + Danh phận + Danh vọng
+- M8 — World Map + NPC Framework + Thầy Bói
+- M9 — House V2
+- M10 — Employment + Chợ Việc
+- M11 — Sưu 10.5% + Công quỹ
+- M12 — Chapter IX / Hội Xuân Framework
+- M13 — 4 Folk Minigames
+- M14 — Shared Card Platform
+- M15 — Tiến Lên + Sâm + Ba Cây
+- M16 — Social + Sổ Làng
+- M17 — Theft + Evidence + Court
+- M18 — Seasonal 20/11
+- M19 — Audio V2 + QTV BGM
+- M20 — Telemetry + Economy Balancing
+- M21 — Anti-Cheat Hardening
+- M22 — Migration Rehearsal + Staging
+
+For each milestone: new Jules session, exact accepted previous head as starting baseline, plan approval before implementation, one implementation PR, independent exact-head CI, semantic audit, then immediate handoff to the next milestone. Never create the next milestone early and never leave a passed milestone sitting without beginning the authorized handoff.
+
+M23 / production cutover is not autonomous. After M22 and full regression/integration PASS, checkpoint `READY_FOR_PLAYTEST` and stop for the owner; do not deploy or mutate production.
 
 ## Safety invariants
 
