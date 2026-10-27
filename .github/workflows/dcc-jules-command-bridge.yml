@@ -29,19 +29,19 @@ jobs:
           action=$(printf '%s' "$payload" | jq -r '.action // empty')
           session_id=$(printf '%s' "$payload" | jq -r '.session_id // empty')
           case "$action" in
-            status|approve-plan|send-message|create-session) ;;
+            status|approve-plan|send-message|create-session|verify-ci) ;;
             *) echo "Unsupported action: $action"; exit 1 ;;
           esac
-          if [[ "$action" != "create-session" && -z "$session_id" ]]; then
-            echo 'session_id is required'; exit 1
+          if [[ "$action" == 'status' || "$action" == 'approve-plan' || "$action" == 'send-message' ]]; then
+            test -n "$session_id" || { echo 'session_id is required'; exit 1; }
           fi
           {
             echo "action=$action"
             echo "session_id=$session_id"
           } >> "$GITHUB_OUTPUT"
-          printf '%s' "$payload" > /tmp/command.json
 
       - name: Validate Jules secret
+        if: ${{ steps.cmd.outputs.action == 'status' || steps.cmd.outputs.action == 'approve-plan' || steps.cmd.outputs.action == 'send-message' || steps.cmd.outputs.action == 'create-session' }}
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
         shell: bash
@@ -50,7 +50,7 @@ jobs:
           test -n "$JULES_API_KEY" || { echo 'JULES_API_KEY secret is missing'; exit 1; }
 
       - name: Get Jules session
-        if: ${{ steps.cmd.outputs.action != 'create-session' }}
+        if: ${{ steps.cmd.outputs.action == 'status' || steps.cmd.outputs.action == 'approve-plan' || steps.cmd.outputs.action == 'send-message' }}
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           SESSION_ID: ${{ steps.cmd.outputs.session_id }}
@@ -132,3 +132,71 @@ jobs:
           fi
           [[ "$code" -ge 200 && "$code" -lt 300 ]] || { cat /tmp/result.json; exit 1; }
           jq '{id,title,state,url}' /tmp/result.json
+
+      - name: Resolve and validate exact PR head
+        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" > /tmp/pr.json
+          head_sha=$(jq -r '.head.sha' /tmp/pr.json)
+          head_repo=$(jq -r '.head.repo.full_name' /tmp/pr.json)
+          pr_user=$(jq -r '.user.login' /tmp/pr.json)
+          test "$head_repo" = "$GITHUB_REPOSITORY" || { echo 'Refusing CI secrets for fork PR'; exit 1; }
+          test "$pr_user" = 'huzely' || { echo 'Refusing CI secrets for non-owner PR'; exit 1; }
+          test -n "$head_sha" && test "$head_sha" != 'null'
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "Independent verification target: $head_sha"
+
+      - name: Checkout exact PR head
+        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.head_sha }}
+
+      - name: Set up Node.js for independent CI
+        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/v2/package-lock.json
+
+      - name: Install locked dependencies
+        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        working-directory: server/v2
+        run: npm ci
+
+      - name: Run unit and static tests
+        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        working-directory: server/v2
+        run: npm run test:unit
+
+      - name: Require TEST database secret
+        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        env:
+          POSTGRES_TEST_URL: ${{ secrets.POSTGRES_TEST_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$POSTGRES_TEST_URL" || { echo 'POSTGRES_TEST_URL secret is missing'; exit 1; }
+
+      - name: Run PostgreSQL integration and migration 002 verification
+        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        working-directory: server/v2
+        env:
+          POSTGRES_TEST_URL: ${{ secrets.POSTGRES_TEST_URL }}
+          POSTGRES_IS_TEST_STAGING: 'true'
+        run: npm run test:integration
+
+      - name: Repeat integration on same persistent TEST database
+        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        working-directory: server/v2
+        env:
+          POSTGRES_TEST_URL: ${{ secrets.POSTGRES_TEST_URL }}
+          POSTGRES_IS_TEST_STAGING: 'true'
+        run: npm run test:integration
