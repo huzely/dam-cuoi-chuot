@@ -1,0 +1,395 @@
+name: DCC Milestone Control
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: dcc-milestone-control-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: read
+  actions: read
+
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    outputs:
+      active: ${{ steps.control.outputs.active }}
+      phase: ${{ steps.control.outputs.phase }}
+      generation: ${{ steps.control.outputs.generation }}
+      milestone: ${{ steps.control.outputs.milestone }}
+      session_id: ${{ steps.control.outputs.session_id }}
+      pr_number: ${{ steps.control.outputs.pr_number }}
+      head_sha: ${{ steps.control.outputs.head_sha }}
+      expected_base_branch: ${{ steps.control.outputs.expected_base_branch }}
+      expected_base_sha: ${{ steps.control.outputs.expected_base_sha }}
+      expected_start_sha: ${{ steps.control.outputs.expected_start_sha }}
+      ci_success: ${{ steps.control.outputs.ci_success }}
+      need_ci: ${{ steps.control.outputs.need_ci }}
+    steps:
+      - name: Checkout authoritative checkpoint
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          sparse-checkout: .dcc/control-state.json
+          sparse-checkout-cone-mode: false
+
+      - name: Resolve milestone phase and adopt exact Jules PR when safe
+        id: control
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=.dcc/control-state.json
+          jq -e . "$state" >/dev/null
+
+          generation=$(jq -r '.generation' "$state")
+          milestone=$(jq -r '.milestone' "$state")
+          session_id=$(jq -r '.jules_session_id' "$state")
+          implementation_pr=$(jq -r '.implementation_pr_number // empty' "$state")
+          starting_branch=$(jq -r '.starting_branch // empty' "$state")
+          expected_start_sha=$(jq -r '.expected_start_sha // empty' "$state")
+          expected_base_branch=$(jq -r '.expected_base_branch // empty' "$state")
+          expected_base_sha=$(jq -r '.expected_base_sha // empty' "$state")
+
+          test -n "$generation" && test "$generation" != null
+          test -n "$milestone" && test "$milestone" != null
+          test -n "$session_id" && test "$session_id" != null
+
+          active=true
+          phase=no_pr
+          pr_number=''
+          head_sha=''
+          ci_success=false
+          need_ci=false
+
+          if [[ "$EVENT_NAME" == 'pull_request_target' ]]; then
+            if [[ -n "$implementation_pr" && "$implementation_pr" != null ]]; then
+              if [[ "$EVENT_PR_NUMBER" != "$implementation_pr" ]]; then
+                active=false
+              else
+                phase=pr
+                pr_number="$implementation_pr"
+              fi
+            else
+              gh api "repos/${GITHUB_REPOSITORY}/pulls/${EVENT_PR_NUMBER}" > /tmp/candidate.json
+              candidate_repo=$(jq -r '.head.repo.full_name' /tmp/candidate.json)
+              candidate_user=$(jq -r '.user.login' /tmp/candidate.json)
+              candidate_base=$(jq -r '.base.ref' /tmp/candidate.json)
+              candidate_base_sha=$(jq -r '.base.sha' /tmp/candidate.json)
+              candidate_head_ref=$(jq -r '.head.ref' /tmp/candidate.json)
+              candidate_body=$(jq -r '.body // ""' /tmp/candidate.json)
+
+              identity_match=false
+              if [[ "$candidate_head_ref" == *"$session_id"* || "$candidate_body" == *"$session_id"* ]]; then
+                identity_match=true
+              fi
+
+              if [[ "$candidate_repo" == "$GITHUB_REPOSITORY" && \
+                    "$candidate_user" == 'huzely' && \
+                    -n "$starting_branch" && "$candidate_base" == "$starting_branch" && \
+                    -n "$expected_start_sha" && "$candidate_base_sha" == "$expected_start_sha" && \
+                    "$identity_match" == true ]]; then
+                echo "Adopting PR #${EVENT_PR_NUMBER} as ${milestone} implementation PR."
+
+                gh api "repos/${GITHUB_REPOSITORY}/contents/.dcc/control-state.json?ref=main" > /tmp/state-api.json
+                blob_sha=$(jq -r '.sha' /tmp/state-api.json)
+                jq -r '.content' /tmp/state-api.json | tr -d '\n' | base64 -d > /tmp/latest-state.json
+                latest_generation=$(jq -r '.generation' /tmp/latest-state.json)
+                latest_impl=$(jq -r '.implementation_pr_number // empty' /tmp/latest-state.json)
+                [[ "$latest_generation" == "$generation" ]] || { echo 'Checkpoint moved; refusing stale PR adoption.'; exit 0; }
+                [[ -z "$latest_impl" || "$latest_impl" == null ]] || { echo 'Implementation PR already adopted elsewhere.'; exit 0; }
+
+                new_generation=$((generation + 1))
+                jq \
+                  --argjson generation "$new_generation" \
+                  --argjson pr "$EVENT_PR_NUMBER" \
+                  --arg base "$starting_branch" \
+                  --arg sha "$expected_start_sha" \
+                  '.generation = $generation
+                   | .pr_number = $pr
+                   | .implementation_pr_number = $pr
+                   | .expected_base_branch = $base
+                   | .expected_base_sha = $sha
+                   | .live_head_source = "github_pr"
+                   | .status = "IN_PROGRESS"' \
+                  /tmp/latest-state.json > /tmp/new-state.json
+
+                encoded=$(base64 -w0 /tmp/new-state.json)
+                gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/.dcc/control-state.json" \
+                  -f message="control: adopt ${milestone} implementation PR #${EVENT_PR_NUMBER}" \
+                  -f content="$encoded" \
+                  -f sha="$blob_sha" \
+                  -f branch=main >/tmp/update.json
+
+                generation="$new_generation"
+                implementation_pr="$EVENT_PR_NUMBER"
+                expected_base_branch="$starting_branch"
+                expected_base_sha="$expected_start_sha"
+                phase=pr
+                pr_number="$EVENT_PR_NUMBER"
+              else
+                active=false
+                echo 'PR event is not the exact owner/session/base candidate for the active milestone.'
+              fi
+            fi
+          elif [[ -n "$implementation_pr" && "$implementation_pr" != null ]]; then
+            phase=pr
+            pr_number="$implementation_pr"
+          fi
+
+          if [[ "$active" == true && "$phase" == pr ]]; then
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" > /tmp/pr.json
+            test "$(jq -r '.state' /tmp/pr.json)" = open || { echo 'Active implementation PR is not open.'; active=false; }
+
+            if [[ "$active" == true ]]; then
+              head_sha=$(jq -r '.head.sha' /tmp/pr.json)
+              head_repo=$(jq -r '.head.repo.full_name' /tmp/pr.json)
+              pr_user=$(jq -r '.user.login' /tmp/pr.json)
+              base_ref=$(jq -r '.base.ref' /tmp/pr.json)
+              base_sha=$(jq -r '.base.sha' /tmp/pr.json)
+
+              test "$head_repo" = "$GITHUB_REPOSITORY" || { echo 'Refusing owner secrets for fork PR'; exit 1; }
+              test "$pr_user" = huzely || { echo 'Refusing owner secrets for non-owner PR'; exit 1; }
+              test "$base_ref" = "$expected_base_branch" || { echo "Unexpected PR base: $base_ref"; exit 1; }
+              test "$base_sha" = "$expected_base_sha" || { echo "Authoritative base moved: expected $expected_base_sha, got $base_sha"; exit 1; }
+
+              gh api -H 'Accept: application/vnd.github+json' \
+                "repos/${GITHUB_REPOSITORY}/commits/${head_sha}/check-runs?per_page=100" > /tmp/checks.json
+              ci_success=$(jq -r '[.check_runs[] | select(.name == "exact-head-ci" and .conclusion == "success")] | length > 0' /tmp/checks.json)
+              if [[ "$EVENT_NAME" == pull_request_target || "$ci_success" != true ]]; then
+                need_ci=true
+              fi
+            fi
+          fi
+
+          {
+            echo "active=$active"
+            echo "phase=$phase"
+            echo "generation=$generation"
+            echo "milestone=$milestone"
+            echo "session_id=$session_id"
+            echo "pr_number=$pr_number"
+            echo "head_sha=$head_sha"
+            echo "expected_base_branch=$expected_base_branch"
+            echo "expected_base_sha=$expected_base_sha"
+            echo "expected_start_sha=$expected_start_sha"
+            echo "ci_success=$ci_success"
+            echo "need_ci=$need_ci"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "DCC generation=$generation milestone=$milestone phase=$phase session=$session_id pr=${pr_number:-none} head=${head_sha:-none}"
+
+  exact-head-ci:
+    name: exact-head-ci
+    needs: checkpoint
+    if: ${{ needs.checkpoint.outputs.active == 'true' && needs.checkpoint.outputs.phase == 'pr' && needs.checkpoint.outputs.need_ci == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact implementation head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.checkpoint.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Verify checkpoint generation and exact active head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.checkpoint.outputs.pr_number }}
+          TARGET_SHA: ${{ needs.checkpoint.outputs.head_sha }}
+          EXPECTED_GENERATION: ${{ needs.checkpoint.outputs.generation }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')
+          test "$current" = "$TARGET_SHA" || { echo "PR head moved from $TARGET_SHA to $current; refusing stale CI."; exit 1; }
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          gh api "repos/${GITHUB_REPOSITORY}/contents/.dcc/control-state.json?ref=main" --jq '.content' | tr -d '\n' | base64 -d > /tmp/current-state.json
+          test "$(jq -r '.generation' /tmp/current-state.json)" = "$EXPECTED_GENERATION" || { echo 'Checkpoint generation moved; refusing stale CI.'; exit 1; }
+          test "$(jq -r '.implementation_pr_number // empty' /tmp/current-state.json)" = "$PR_NUMBER" || { echo 'Implementation PR checkpoint moved; refusing stale CI.'; exit 1; }
+
+      - name: Verify authoritative base ancestry
+        env:
+          EXPECTED_BASE_SHA: ${{ needs.checkpoint.outputs.expected_base_sha }}
+          TARGET_SHA: ${{ needs.checkpoint.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "${EXPECTED_BASE_SHA}^{commit}"
+          git merge-base --is-ancestor "$EXPECTED_BASE_SHA" "$TARGET_SHA"
+
+      - name: Verify M3 migration boundary
+        if: ${{ needs.checkpoint.outputs.milestone == 'M3' }}
+        env:
+          EXPECTED_BASE_SHA: ${{ needs.checkpoint.outputs.expected_base_sha }}
+          TARGET_SHA: ${{ needs.checkpoint.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f server/v2/migrations/004_v2_economy_wallet_schema.sql || { echo 'M3 requires migration 004_v2_economy_wallet_schema.sql'; exit 1; }
+          changed_other=$(git diff --name-only "$EXPECTED_BASE_SHA" "$TARGET_SHA" -- server/v2/migrations | grep -v '^server/v2/migrations/004_v2_economy_wallet_schema.sql$' || true)
+          test -z "$changed_other" || { echo 'M3 must not modify prior migrations:'; printf '%s\n' "$changed_other"; exit 1; }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/v2/package-lock.json
+
+      - name: Install locked dependencies
+        working-directory: server/v2
+        run: npm ci
+
+      - name: Run unit and static tests
+        working-directory: server/v2
+        run: npm run test:unit
+
+      - name: Require TEST database secret
+        env:
+          POSTGRES_TEST_URL: ${{ secrets.POSTGRES_TEST_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$POSTGRES_TEST_URL" || { echo 'POSTGRES_TEST_URL secret is missing'; exit 1; }
+
+      - name: Run PostgreSQL integration on TEST database
+        working-directory: server/v2
+        env:
+          POSTGRES_TEST_URL: ${{ secrets.POSTGRES_TEST_URL }}
+          POSTGRES_IS_TEST_STAGING: 'true'
+        run: npm run test:integration
+
+      - name: Repeat integration on same persistent TEST database
+        working-directory: server/v2
+        env:
+          POSTGRES_TEST_URL: ${{ secrets.POSTGRES_TEST_URL }}
+          POSTGRES_IS_TEST_STAGING: 'true'
+        run: npm run test:integration
+
+  ci-failure-feedback:
+    needs: [checkpoint, exact-head-ci]
+    if: ${{ always() && needs.checkpoint.outputs.active == 'true' && needs.checkpoint.outputs.phase == 'pr' && needs.exact-head-ci.result == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send exact-head CI failure to same Jules session once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          GENERATION: ${{ needs.checkpoint.outputs.generation }}
+          MILESTONE: ${{ needs.checkpoint.outputs.milestone }}
+          PR_NUMBER: ${{ needs.checkpoint.outputs.pr_number }}
+          SESSION_ID: ${{ needs.checkpoint.outputs.session_id }}
+          TARGET_SHA: ${{ needs.checkpoint.outputs.head_sha }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$JULES_API_KEY"
+          gh api "repos/${GITHUB_REPOSITORY}/contents/.dcc/control-state.json?ref=main" --jq '.content' | tr -d '\n' | base64 -d > /tmp/state.json
+          [[ "$(jq -r '.generation' /tmp/state.json)" == "$GENERATION" ]] || exit 0
+          [[ "$(jq -r '.implementation_pr_number // empty' /tmp/state.json)" == "$PR_NUMBER" ]] || exit 0
+          current=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')
+          [[ "$current" == "$TARGET_SHA" ]] || exit 0
+
+          curl --fail-with-body --silent --show-error -H "x-goog-api-key: $JULES_API_KEY" \
+            "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID" -o /tmp/session.json
+          [[ "$(jq -r '.state' /tmp/session.json)" != IN_PROGRESS ]] || exit 0
+
+          key="g${GENERATION}:${MILESTONE}:pr${PR_NUMBER}:${TARGET_SHA}:ci-failure"
+          curl --fail-with-body --silent --show-error -H "x-goog-api-key: $JULES_API_KEY" \
+            "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID/activities?pageSize=100" -o /tmp/activities.json
+          jq -e --arg key "$key" '.. | strings | select(contains($key))' /tmp/activities.json >/dev/null && exit 0 || true
+
+          message="DCC_COMMAND_KEY=${key}. Independent exact-head CI failed for ${MILESTONE} PR #${PR_NUMBER} at ${TARGET_SHA}. Inspect ${RUN_URL}, correct the failure in THIS SAME Jules session and update the existing PR. Do not create another session or PR. Use TEST database only; never production."
+          jq -n --arg prompt "$message" '{prompt:$prompt}' > /tmp/body.json
+          curl --fail-with-body --silent --show-error -X POST -H 'Content-Type: application/json' \
+            -H "x-goog-api-key: $JULES_API_KEY" --data-binary @/tmp/body.json \
+            "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID:sendMessage"
+
+  jules-watch:
+    needs: [checkpoint, exact-head-ci]
+    if: ${{ always() && needs.checkpoint.outputs.active == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep current milestone moving without duplicate sessions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          GENERATION: ${{ needs.checkpoint.outputs.generation }}
+          MILESTONE: ${{ needs.checkpoint.outputs.milestone }}
+          PHASE: ${{ needs.checkpoint.outputs.phase }}
+          PR_NUMBER: ${{ needs.checkpoint.outputs.pr_number }}
+          SESSION_ID: ${{ needs.checkpoint.outputs.session_id }}
+          EXPECTED_START_SHA: ${{ needs.checkpoint.outputs.expected_start_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.checkpoint.outputs.expected_base_sha }}
+          PREVIOUS_CI_SUCCESS: ${{ needs.checkpoint.outputs.ci_success }}
+          CI_JOB_RESULT: ${{ needs.exact-head-ci.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$JULES_API_KEY"
+          gh api "repos/${GITHUB_REPOSITORY}/contents/.dcc/control-state.json?ref=main" --jq '.content' | tr -d '\n' | base64 -d > /tmp/state.json
+          [[ "$(jq -r '.generation' /tmp/state.json)" == "$GENERATION" ]] || exit 0
+
+          curl --fail-with-body --silent --show-error -H "x-goog-api-key: $JULES_API_KEY" \
+            "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID" -o /tmp/session.json
+          session_state=$(jq -r '.state' /tmp/session.json)
+          echo "Jules state: $session_state / phase: $PHASE"
+
+          if [[ "$session_state" == IN_PROGRESS ]]; then
+            echo 'Jules is working; no intervention.'
+            exit 0
+          fi
+          if [[ "$session_state" == AWAITING_PLAN_APPROVAL ]]; then
+            echo 'Plan approval remains semantic-controller gated; no mechanical approval.'
+            exit 0
+          fi
+
+          curl --fail-with-body --silent --show-error -H "x-goog-api-key: $JULES_API_KEY" \
+            "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID/activities?pageSize=100" -o /tmp/activities.json
+
+          if [[ "$PHASE" == no_pr ]]; then
+            if [[ "$session_state" == COMPLETED ]]; then
+              key="g${GENERATION}:${MILESTONE}:no-implementation-pr:resume"
+              jq -e --arg key "$key" '.. | strings | select(contains($key))' /tmp/activities.json >/dev/null && exit 0 || true
+              message="DCC_COMMAND_KEY=${key}. ${MILESTONE} is not complete: this session is COMPLETED but the authoritative checkpoint still has no implementation PR. Resume THIS SAME session from accepted start ${EXPECTED_START_SHA}; implement the approved plan, run tests, push the implementation branch and create/update exactly one PR. Do not create another session or use production."
+              jq -n --arg prompt "$message" '{prompt:$prompt}' > /tmp/body.json
+              curl --fail-with-body --silent --show-error -X POST -H 'Content-Type: application/json' \
+                -H "x-goog-api-key: $JULES_API_KEY" --data-binary @/tmp/body.json \
+                "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID:sendMessage"
+              echo 'Resumed completed session with no implementation PR.'
+            fi
+            exit 0
+          fi
+
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" > /tmp/pr.json
+          pr_state=$(jq -r '.state' /tmp/pr.json)
+          mergeable=$(jq -r 'if .mergeable == null then "unknown" else (.mergeable|tostring) end' /tmp/pr.json)
+          head_sha=$(jq -r '.head.sha' /tmp/pr.json)
+          [[ "$pr_state" == open ]] || exit 0
+
+          ci_good=false
+          if [[ "$CI_JOB_RESULT" == success || "$PREVIOUS_CI_SUCCESS" == true ]]; then ci_good=true; fi
+
+          if [[ "$session_state" == COMPLETED && ( "$mergeable" == false || "$ci_good" != true ) ]]; then
+            key="g${GENERATION}:${MILESTONE}:pr${PR_NUMBER}:${head_sha}:resume-blocked"
+            jq -e --arg key "$key" '.. | strings | select(contains($key))' /tmp/activities.json >/dev/null && exit 0 || true
+            message="DCC_COMMAND_KEY=${key}. Resume THIS SAME ${MILESTONE} session. PR #${PR_NUMBER} at ${head_sha} is not independently acceptable (mergeable=${mergeable}, exact-head-ci-good=${ci_good}). Reconcile against authoritative base ${EXPECTED_BASE_SHA}, fix the existing PR, and push a corrected head. Do not create another session or PR. TEST resources only; never production."
+            jq -n --arg prompt "$message" '{prompt:$prompt}' > /tmp/body.json
+            curl --fail-with-body --silent --show-error -X POST -H 'Content-Type: application/json' \
+              -H "x-goog-api-key: $JULES_API_KEY" --data-binary @/tmp/body.json \
+              "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID:sendMessage"
+            echo 'Resumed blocked implementation session.'
+          else
+            echo 'No mechanical intervention needed; semantic PASS and next-milestone transition remain controller-gated.'
+          fi
