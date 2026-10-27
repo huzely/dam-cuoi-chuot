@@ -1,0 +1,70 @@
+name: M2.1 Independent Verification
+
+on:
+  push:
+    branches:
+      - jules-13026570411885116826-d6b9e06f
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m2-1-independent-verification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-m2-1:
+    name: Unit and PostgreSQL TEST verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      POSTGRES_TEST_URL: ${{ secrets.POSTGRES_TEST_URL }}
+      POSTGRES_IS_TEST_STAGING: "true"
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Confirm exact SHA and TEST secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -n "${POSTGRES_TEST_URL:-}"
+          printf 'Verifying commit %s\n' "$GITHUB_SHA"
+          printf 'POSTGRES_TEST_URL is configured (value withheld).\n'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/v2/package-lock.json
+
+      - name: Install dependencies
+        working-directory: server/v2
+        run: npm ci
+
+      - name: Enforce database safety guard
+        working-directory: server/v2
+        run: |
+          node --input-type=module -e "import { assertSafeTestDatabaseUrl } from './adapters/pg-driver.js'; assertSafeTestDatabaseUrl(process.env.POSTGRES_TEST_URL); console.log('Database safety guard accepted the designated TEST endpoint.');"
+
+      - name: Unit and static tests
+        working-directory: server/v2
+        run: npm run test:unit
+
+      - name: PostgreSQL integration and migration idempotency (pass 1)
+        working-directory: server/v2
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:integration 2>&1 | sed '/Connecting to test database:/d'
+
+      - name: PostgreSQL integration and migration idempotency (same TEST database, pass 2)
+        working-directory: server/v2
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:integration 2>&1 | sed '/Connecting to test database:/d'
