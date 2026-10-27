@@ -4,9 +4,13 @@ on:
   issue_comment:
     types: [created]
 
+concurrency:
+  group: dcc-control-${{ github.repository }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
-  issues: write
+  issues: read
   pull-requests: read
 
 jobs:
@@ -40,8 +44,93 @@ jobs:
             echo "session_id=$session_id"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Validate checkpoint fence and deduplicate command
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BODY: ${{ github.event.comment.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="${BODY#'/dcc-jules '}"
+          action=$(printf '%s' "$payload" | jq -r '.action')
+          session_id=$(printf '%s' "$payload" | jq -r '.session_id // empty')
+          generation=$(printf '%s' "$payload" | jq -r '.generation // empty')
+          command_key=$(printf '%s' "$payload" | jq -r '.command_key // empty')
+
+          gh api "repos/${GITHUB_REPOSITORY}/contents/.dcc/control-state.json?ref=main" --jq '.content' | tr -d '\n' | base64 -d > /tmp/state.json
+          jq -e . /tmp/state.json >/dev/null
+
+          state_generation=$(jq -r '.generation' /tmp/state.json)
+          state_milestone=$(jq -r '.milestone' /tmp/state.json)
+          state_pr=$(jq -r '.pr_number' /tmp/state.json)
+          state_session=$(jq -r '.jules_session_id' /tmp/state.json)
+          expected_base_branch=$(jq -r '.expected_base_branch' /tmp/state.json)
+          expected_base_sha=$(jq -r '.expected_base_sha' /tmp/state.json)
+          next_session_allowed=$(jq -r '.next_session_allowed // false' /tmp/state.json)
+
+          case "$action" in
+            status|approve-plan|send-message|verify-ci)
+              [[ "$ISSUE_NUMBER" == "$state_pr" ]] || { echo "Stale/wrong PR: command on #$ISSUE_NUMBER, active PR is #$state_pr"; exit 1; }
+              ;;
+          esac
+
+          case "$action" in
+            status|approve-plan|send-message)
+              [[ "$session_id" == "$state_session" ]] || { echo "Stale/wrong Jules session: $session_id, active is $state_session"; exit 1; }
+              ;;
+          esac
+
+          mutating=false
+          case "$action" in
+            approve-plan|send-message|create-session|verify-ci) mutating=true ;;
+          esac
+
+          if [[ "$mutating" == true ]]; then
+            test -n "$generation" || { echo 'generation is required for mutating commands'; exit 1; }
+            test -n "$command_key" || { echo 'command_key is required for mutating commands'; exit 1; }
+            [[ "$generation" == "$state_generation" ]] || { echo "Stale generation $generation; current generation is $state_generation"; exit 1; }
+
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments?per_page=100" > /tmp/comments.json
+            duplicate=$(jq -r --arg key "$command_key" --argjson current "$COMMENT_ID" '
+              [ .[]
+                | select(.id < $current)
+                | .body as $body
+                | select($body | startswith("/dcc-jules "))
+                | ($body | ltrimstr("/dcc-jules ") | fromjson? // {}) as $p
+                | select(($p.command_key // "") == $key)
+              ] | length > 0
+            ' /tmp/comments.json)
+            if [[ "$duplicate" == true ]]; then
+              echo "Duplicate command_key suppressed: $command_key"
+              echo 'execute=false' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          if [[ "$action" == 'create-session' ]]; then
+            [[ "$next_session_allowed" == true ]] || { echo 'Checkpoint does not authorize creation of the next Jules session'; exit 1; }
+            expected_title=$(jq -r '.next_milestone // empty' /tmp/state.json)
+            expected_branch=$(jq -r '.next_starting_branch // empty' /tmp/state.json)
+            title=$(printf '%s' "$payload" | jq -r '.title // empty')
+            branch=$(printf '%s' "$payload" | jq -r '.starting_branch // empty')
+            test -n "$expected_title" && test -n "$expected_branch" || { echo 'Checkpoint transition fields are incomplete'; exit 1; }
+            [[ "$title" == "$expected_title" ]] || { echo "Unexpected next milestone title: $title"; exit 1; }
+            [[ "$branch" == "$expected_branch" ]] || { echo "Unexpected next starting branch: $branch"; exit 1; }
+          fi
+
+          {
+            echo 'execute=true'
+            echo "generation=$state_generation"
+            echo "milestone=$state_milestone"
+            echo "expected_base_branch=$expected_base_branch"
+            echo "expected_base_sha=$expected_base_sha"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Validate Jules secret
-        if: ${{ steps.cmd.outputs.action == 'status' || steps.cmd.outputs.action == 'approve-plan' || steps.cmd.outputs.action == 'send-message' || steps.cmd.outputs.action == 'create-session' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && (steps.cmd.outputs.action == 'status' || steps.cmd.outputs.action == 'approve-plan' || steps.cmd.outputs.action == 'send-message' || steps.cmd.outputs.action == 'create-session') }}
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
         shell: bash
@@ -50,7 +139,7 @@ jobs:
           test -n "$JULES_API_KEY" || { echo 'JULES_API_KEY secret is missing'; exit 1; }
 
       - name: Get Jules session
-        if: ${{ steps.cmd.outputs.action == 'status' || steps.cmd.outputs.action == 'approve-plan' || steps.cmd.outputs.action == 'send-message' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && (steps.cmd.outputs.action == 'status' || steps.cmd.outputs.action == 'approve-plan' || steps.cmd.outputs.action == 'send-message') }}
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           SESSION_ID: ${{ steps.cmd.outputs.session_id }}
@@ -64,7 +153,7 @@ jobs:
           jq '{id,title,state,url,outputs}' /tmp/session.json
 
       - name: List Jules activities
-        if: ${{ steps.cmd.outputs.action == 'status' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'status' }}
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           SESSION_ID: ${{ steps.cmd.outputs.session_id }}
@@ -77,7 +166,7 @@ jobs:
             | jq '.activities[-30:]'
 
       - name: Approve Jules plan
-        if: ${{ steps.cmd.outputs.action == 'approve-plan' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'approve-plan' }}
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           SESSION_ID: ${{ steps.cmd.outputs.session_id }}
@@ -90,7 +179,7 @@ jobs:
             "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID:approvePlan"
 
       - name: Send message to Jules
-        if: ${{ steps.cmd.outputs.action == 'send-message' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'send-message' }}
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           SESSION_ID: ${{ steps.cmd.outputs.session_id }}
@@ -100,7 +189,9 @@ jobs:
           set -euo pipefail
           payload="${BODY#'/dcc-jules '}"
           message=$(printf '%s' "$payload" | jq -r '.message // empty')
+          key=$(printf '%s' "$payload" | jq -r '.command_key')
           test -n "$message" || { echo 'message is required'; exit 1; }
+          message="DCC_COMMAND_KEY=${key}. ${message}"
           jq -n --arg prompt "$message" '{prompt:$prompt}' >/tmp/body.json
           curl --fail-with-body --silent --show-error \
             -X POST -H 'Content-Type: application/json' \
@@ -109,7 +200,7 @@ jobs:
             "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID:sendMessage"
 
       - name: Create Jules session
-        if: ${{ steps.cmd.outputs.action == 'create-session' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'create-session' }}
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           BODY: ${{ github.event.comment.body }}
@@ -120,7 +211,9 @@ jobs:
           title=$(printf '%s' "$payload" | jq -r '.title // empty')
           branch=$(printf '%s' "$payload" | jq -r '.starting_branch // empty')
           message=$(printf '%s' "$payload" | jq -r '.message // empty')
+          key=$(printf '%s' "$payload" | jq -r '.command_key')
           test -n "$title" && test -n "$branch" && test -n "$message" || { echo 'title, starting_branch and message are required'; exit 1; }
+          message="DCC_COMMAND_KEY=${key}. ${message}"
           jq -n --arg title "$title" --arg branch "$branch" --arg prompt "$message" \
             '{prompt:$prompt,title:$title,sourceContext:{source:"sources/github/huzely/dam-cuoi-chuot",githubRepoContext:{startingBranch:$branch}},requirePlanApproval:true,automationMode:"AUTO_CREATE_PR"}' >/tmp/create.json
           code=$(curl --silent --show-error -o /tmp/result.json -w '%{http_code}' \
@@ -134,11 +227,13 @@ jobs:
           jq '{id,title,state,url}' /tmp/result.json
 
       - name: Resolve and validate exact PR head
-        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'verify-ci' }}
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.issue.number }}
+          EXPECTED_BASE_BRANCH: ${{ steps.guard.outputs.expected_base_branch }}
+          EXPECTED_BASE_SHA: ${{ steps.guard.outputs.expected_base_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -146,20 +241,46 @@ jobs:
           head_sha=$(jq -r '.head.sha' /tmp/pr.json)
           head_repo=$(jq -r '.head.repo.full_name' /tmp/pr.json)
           pr_user=$(jq -r '.user.login' /tmp/pr.json)
+          base_ref=$(jq -r '.base.ref' /tmp/pr.json)
+          base_sha=$(jq -r '.base.sha' /tmp/pr.json)
           test "$head_repo" = "$GITHUB_REPOSITORY" || { echo 'Refusing CI secrets for fork PR'; exit 1; }
           test "$pr_user" = 'huzely' || { echo 'Refusing CI secrets for non-owner PR'; exit 1; }
+          test "$base_ref" = "$EXPECTED_BASE_BRANCH" || { echo "Unexpected base branch: $base_ref"; exit 1; }
+          test "$base_sha" = "$EXPECTED_BASE_SHA" || { echo "Unexpected base SHA: $base_sha"; exit 1; }
           test -n "$head_sha" && test "$head_sha" != 'null'
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           echo "Independent verification target: $head_sha"
 
       - name: Checkout exact PR head
-        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'verify-ci' }}
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.pr.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Verify authoritative base ancestry
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'verify-ci' }}
+        env:
+          EXPECTED_BASE_SHA: ${{ steps.guard.outputs.expected_base_sha }}
+          TARGET_SHA: ${{ steps.pr.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$EXPECTED_BASE_SHA" "$TARGET_SHA" || {
+            echo "Head $TARGET_SHA is not descended from authoritative base $EXPECTED_BASE_SHA"; exit 1;
+          }
+
+      - name: Verify M2.2 migration boundary
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'verify-ci' && steps.guard.outputs.milestone == 'M2.2' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f server/v2/migrations/002_v2_account_identity_schema.sql
+          test -f server/v2/migrations/003_v2_provider_identity_schema.sql
+          ! grep -Eq 'CREATE[[:space:]]+TABLE[^;]*v2_provider_identities' server/v2/migrations/002_v2_account_identity_schema.sql
 
       - name: Set up Node.js for independent CI
-        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'verify-ci' }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -167,17 +288,17 @@ jobs:
           cache-dependency-path: server/v2/package-lock.json
 
       - name: Install locked dependencies
-        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'verify-ci' }}
         working-directory: server/v2
         run: npm ci
 
       - name: Run unit and static tests
-        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'verify-ci' }}
         working-directory: server/v2
         run: npm run test:unit
 
       - name: Require TEST database secret
-        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'verify-ci' }}
         env:
           POSTGRES_TEST_URL: ${{ secrets.POSTGRES_TEST_URL }}
         shell: bash
@@ -185,8 +306,8 @@ jobs:
           set -euo pipefail
           test -n "$POSTGRES_TEST_URL" || { echo 'POSTGRES_TEST_URL secret is missing'; exit 1; }
 
-      - name: Run PostgreSQL integration and migration 002 verification
-        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+      - name: Run PostgreSQL integration
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'verify-ci' }}
         working-directory: server/v2
         env:
           POSTGRES_TEST_URL: ${{ secrets.POSTGRES_TEST_URL }}
@@ -194,7 +315,7 @@ jobs:
         run: npm run test:integration
 
       - name: Repeat integration on same persistent TEST database
-        if: ${{ steps.cmd.outputs.action == 'verify-ci' }}
+        if: ${{ steps.guard.outputs.execute == 'true' && steps.cmd.outputs.action == 'verify-ci' }}
         working-directory: server/v2
         env:
           POSTGRES_TEST_URL: ${{ secrets.POSTGRES_TEST_URL }}
