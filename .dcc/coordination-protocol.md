@@ -16,6 +16,14 @@ This file defines the control-plane contract for ChatGPT, Work, GitHub Actions, 
 - Work: long-running operator. It reads this protocol and the current checkpoint, inspects GitHub/Jules through connectors or the GitHub bridge, and performs only actions allowed by the active generation.
 - ChatGPT watchdog/controller: semantic auditor. It validates acceptance criteria, architecture/security/spec alignment, decides FAIL/PASS, and authorizes milestone transitions.
 
+## Work transport rules
+
+- Work must use the connected GitHub tools for repository, PR, commit, CI, workflow, and checkpoint access.
+- Work must use the DCC Jules Command Bridge or another explicitly supported connector/API path for Jules control.
+- Work must not depend on Cloud Browser for GitHub or Jules. Cloud Browser is fallback-only for tasks that truly require a website UI.
+- A Cloud Browser connection failure must not pause, invalidate, or reset the DCC checkpoint.
+- If Work itself pauses or resumes, it must re-read `control-state.json`, this protocol, the active PR head, and current Jules state before taking any action.
+
 ## Serialization and idempotency
 
 All control workflows share one GitHub concurrency group and must use `cancel-in-progress: false`. This prevents simultaneous control mutations.
@@ -53,9 +61,10 @@ A controller may transition only after independently verifying the exact active 
 
 1. Re-read `control-state.json` and PR metadata.
 2. Verify generation/session/PR/head have not changed underneath the audit.
-3. Update the checkpoint with compare-and-swap, increment `generation`, and set the next milestone transition fields.
+3. Update the checkpoint with compare-and-swap, increment `generation`, and set `next_session_allowed=true`, `next_milestone`, and `next_starting_branch`.
 4. Only after the new generation is visible may one `create-session` command be issued for the next milestone using a deterministic `command_key` for that generation.
 5. Other agents observing the new generation abandon any pending action created from the previous generation.
+6. After the next session/PR is established, update the checkpoint again with compare-and-swap and set `next_session_allowed=false`.
 
 ## Safety invariants
 
