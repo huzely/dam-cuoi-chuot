@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
-  "generation": 7,
+  "generation": 8,
   "protocol_file": ".dcc/coordination-protocol.md",
-  "milestone": "M4",
-  "milestone_title": "M4 — Progress/Unlock Compatibility",
-  "status": "WAITING_PLAN_APPROVAL",
-  "jules_session_id": "4853011554120262538",
+  "milestone": "M1-M3_RETRO_AUDIT",
+  "milestone_title": "Frozen-spec retrospective audit — M1 through M3",
+  "status": "AUDIT_REQUIRED",
+  "jules_session_id": null,
   "approved_plan_id": null,
   "pr_number": 7,
   "control_pr_number": 7,
@@ -16,13 +16,28 @@
   "expected_base_sha": "76262b174ac85bda1d6572343760737712c31c77",
   "previous_milestone": {
     "milestone": "M3",
-    "status": "PASS",
+    "status": "PROVISIONAL_PASS_PENDING_FROZEN_SPEC_AUDIT",
     "session_id": "9668882045283125937",
     "pr_number": 7,
     "accepted_head_sha": "76262b174ac85bda1d6572343760737712c31c77",
     "accepted_ci_run_id": 40604079763
   },
-  "live_head_source": "jules_pending_pr",
+  "suspended_next_milestone": {
+    "milestone": "M4",
+    "session_id": "4853011554120262538",
+    "status_at_freeze": "WAITING_PLAN_APPROVAL",
+    "implementation_started": false,
+    "reason": "M1-M3 must be re-audited against both frozen DOCX design documents before roadmap progression. Do not approve or implement M4 until audit closure."
+  },
+  "audit_scope": {
+    "documents": [
+      "Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx",
+      "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx"
+    ],
+    "milestones": ["M1", "M2", "M3"],
+    "requirement": "Build a traceable requirement-to-code/test/CI matrix for all M1-M3 requirements plus applicable cross-cutting invariants and Definition of Done. Any unproven requirement is GAP, not PASS. Repair gaps before resuming M4."
+  },
+  "live_head_source": "frozen_at_m3_accepted_head",
   "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
@@ -46,6 +61,8 @@
     "production_db_allowed": false,
     "semantic_pass_required_after_ci": true,
     "plan_approval_required": true,
-    "do_not_treat_control_pr_as_implementation_pr": true
+    "do_not_treat_control_pr_as_implementation_pr": true,
+    "freeze_m4_until_retro_audit_pass": true,
+    "unproven_frozen_spec_requirement_is_gap": true
   }
 }
