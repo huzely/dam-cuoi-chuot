@@ -96,25 +96,23 @@ test('PostgreSQL Live Integration Test Harness', async (t) => {
       const client = await pool.connect();
       try {
         // Ensure test database has Supabase compatibility roles anon & authenticated if running on non-Supabase test DB (Neon)
-        await client.query(`
-          DO $$
-          BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-              BEGIN
-                CREATE ROLE anon NOLOGIN;
-              EXCEPTION WHEN OTHERS THEN
-                NULL;
-              END;
-            END IF;
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-              BEGIN
-                CREATE ROLE authenticated NOLOGIN;
-              EXCEPTION WHEN OTHERS THEN
-                NULL;
-              END;
-            END IF;
-          END $$;
-        `);
+        for (const roleName of ['anon', 'authenticated']) {
+          const checkRes = await client.query(
+            `SELECT 1 FROM pg_roles WHERE rolname = $1`,
+            [roleName]
+          );
+          if (checkRes.rows.length === 0) {
+            try {
+              await client.query(`CREATE ROLE ${roleName} NOLOGIN;`);
+            } catch (err) {
+              throw new Error(
+                `Unable to provision required Supabase compatibility role "${roleName}" on TEST database. ` +
+                `Ensure the test database user has CREATEROLE privileges or pre-provisioned roles. ` +
+                `Original error: ${err.message}`
+              );
+            }
+          }
+        }
 
         await client.query(sql001);
         await client.query(sql002);
