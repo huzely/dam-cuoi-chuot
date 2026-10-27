@@ -316,7 +316,7 @@ export class EconomyService {
 
       // Transfer Value Conservation Enforcement
       const senderDelta = -valAmount;
-      const recipientDelta = +valAmount;
+      const recipientDelta = valAmount;
       if (senderDelta + recipientDelta !== 0n) {
         throw new TransferConservationError('Sum of transfer deltas is non-zero.');
       }
@@ -605,7 +605,7 @@ export class EconomyService {
       const ledgerEntry = await activeTx.ledger.recordEntry({
         transactionId,
         userId: hold.userId,
-        amount: +holdAmount,
+        amount: holdAmount,
         balanceAfter: newAvailable,
         class: 'SPECIAL',
         type: 'hold.release',
@@ -734,7 +734,7 @@ export class EconomyService {
         targetLedgerEntry = await activeTx.ledger.recordEntry({
           transactionId,
           userId: targetUserId,
-          amount: +holdAmount,
+          amount: holdAmount,
           balanceAfter: BigInt(updatedTargetWallet.availableBalance),
           class: 'SPECIAL',
           type: 'hold.capture',
