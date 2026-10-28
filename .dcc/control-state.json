@@ -1,18 +1,18 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 19,
+  "generation": 20,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "RECOVERY_SESSION_REQUIRED",
-  "jules_session_id": "9465567810961076340",
+  "status": "WAITING_PLAN",
+  "jules_session_id": "11994204223709041554",
   "approved_plan_id": null,
   "pr_number": 7,
   "control_pr_number": 7,
   "implementation_pr_number": 7,
   "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
-  "expected_start_sha": "f95a676030750edd2ad7f64a4a73110397f49093",
+  "expected_start_sha": "6ace37dff18807f03615ecc221f5e061901ec093",
   "expected_base_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
   "expected_base_sha": "737097483495f1d650110a18788a21db62f71bba",
   "audit_baseline_head_sha": "76262b174ac85bda1d6572343760737712c31c77",
@@ -20,12 +20,15 @@
     "historical_session": "9668882045283125937",
     "first_replacement_session": "9465567810961076340",
     "first_replacement_state": "COMPLETED",
-    "same_session_retry_command_key": "g16-retro-f95-semantic-fix-threads-registry",
-    "same_session_retry_result": "MESSAGE_ACCEPTED_BUT_SESSION_REMAINED_COMPLETED",
-    "replacement_required": true,
-    "reason": "Semantic audit found proven repair work at f95a676..., but the existing recovery session is terminal and did not resume after a fenced send-message. A fresh recovery session is authorized from the exact current PR #7 head only for these fixes.",
+    "replacement_session": "11994204223709041554",
+    "replacement_state": "CREATED_FROM_AUTHORIZED_BRANCH",
+    "replacement_start_sha": "6ace37dff18807f03615ecc221f5e061901ec093",
+    "reason": "Supervisor generation 19 confirmed a proven head drift to 6ace37dff18807f03615ecc221f5e061901ec093 and terminal recovery session 9465567810961076340. Exactly one authorized Recovery 2 session was created via command bridge run 40621158730; checkpoint now adopts it as the sole active session. Terminal sessions remain fenced.",
     "single_active_session_policy": true,
-    "do_not_wake_terminal_sessions": ["9668882045283125937", "9465567810961076340"]
+    "do_not_wake_terminal_sessions": [
+      "9668882045283125937",
+      "9465567810961076340"
+    ]
   },
   "retro_audit": {
     "m1": {
@@ -39,22 +42,22 @@
     "m2": {
       "status": "GAP",
       "gaps": [
-        "server/v2/domains/identity/verifier.js _verifyThreads uses graph.facebook.com/debug_token instead of the documented Threads graph.threads.net endpoint semantics; capability verification is not proven fail-closed.",
-        "provider-linking tests do not assert the exact Threads verification host/path or reject wrong endpoint/app/invalid/expired/unverifiable responses.",
-        "Complete account/linking frozen-spec matrix remains outstanding."
+        "M2 provider/linking frozen-spec matrix remains outstanding.",
+        "At current head 6ace37dff18807f03615ecc221f5e061901ec093, Threads uses the documented graph.threads.net /me route, but configured threadsAppId is not used to establish application binding and tests do not cover wrong-app/expired/unverifiable-token cases; recheck capability against authoritative Meta docs.",
+        "Provider exception paths still interpolate err.message, which can leak the assertion token from request URLs; sanitized errors and sentinel leak tests are still needed."
       ]
     },
     "m3": {
       "status": "GAP",
       "gaps": [
-        "server/v2/domains/economy/index.js registers ANTI_CHEAT_FINE as SPECIAL but validateEconomicTransactionType contains a compatibility exception that also accepts SINK, violating strict fail-closed class mapping.",
-        "Need tests proving ANTI_CHEAT_FINE+SPECIAL passes and ANTI_CHEAT_FINE+SINK fails.",
-        "Complete M3 frozen-spec matrix remains outstanding."
+        "The frozen Design classifies ANTI_CHEAT_FINE as SPECIAL/SINK. Current registry keeps SPECIAL but strict validation rejects SINK; model the documented dual compatibility explicitly and test SPECIAL+SINK accepted and FAUCET/TRANSFER rejected.",
+        "M1-M3 full requirement-to-code-to-test-to-exact-head-CI matrix remains outstanding."
       ],
       "mechanical_ci": {
-        "run_id": 40617210533,
-        "head_sha": "f95a676030750edd2ad7f64a4a73110397f49093",
-        "status": "PASS"
+        "run_id": 40619212048,
+        "head_sha": "6ace37dff18807f03615ecc221f5e061901ec093",
+        "status": "PASS",
+        "evidence": "Exact-head-ci job passed ancestry, npm run test:unit (73 tests), POSTGRES_TEST_URL integration (17+5+7 tests) twice on same TEST DB."
       }
     }
   },
@@ -75,9 +78,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": true,
-  "next_milestone": "M1-M3 Retro Fix Recovery 2",
-  "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
+  "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -109,11 +110,14 @@
   },
   "candidate_audit": {
     "pr_number": 7,
-    "head_sha": "f95a676030750edd2ad7f64a4a73110397f49093",
-    "mechanical_ci_run_id": 40617210533,
+    "head_sha": "6ace37dff18807f03615ecc221f5e061901ec093",
+    "base_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
+    "base_sha": "737097483495f1d650110a18788a21db62f71bba",
+    "ancestry": "PASS",
+    "mechanical_ci_run_id": 40619212048,
     "mechanical_ci": "PASS",
     "semantic_status": "FAIL_GAPS_REQUIRE_REPAIR",
     "accepted": false,
-    "next_action": "Create exactly one authorized recovery Jules session from exact PR #7 head f95a676... to fix Threads verification and strict ANTI_CHEAT_FINE class validation; then re-audit and rerun exact-head CI."
+    "next_action": "Sole active recovery session 11994204223709041554 must plan/apply precise M1-M3 matrix, Threads capability/security, and ANTI_CHEAT_FINE SPECIAL/SINK compatibility corrections on existing PR #7."
   }
 }
