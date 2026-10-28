@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 40,
+  "generation": 41,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "WAITING_RECOVERY_SESSION",
-  "jules_session_id": "9445771863876317298",
+  "status": "WAITING_PLAN_APPROVAL",
+  "jules_session_id": "10987024922384397097",
   "approved_plan_id": null,
   "pr_number": 7,
   "control_pr_number": 7,
@@ -20,10 +20,10 @@
     "historical_session": "9668882045283125937",
     "first_replacement_session": "9465567810961076340",
     "first_replacement_state": "COMPLETED",
-    "replacement_session": null,
-    "replacement_state": "TERMINAL_INVALID_PLAN",
+    "replacement_session": "10987024922384397097",
+    "replacement_state": "ACTIVE_PLAN_REVIEW",
     "replacement_start_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
-    "reason": "Recovery 11 9445771863876317298 is terminal COMPLETED with outputs=null (Bridge status run 40695726154; Supervisor run 40695752049). It emitted only planGenerated activity 40b7dc5f044044099a59c8cb82a4d52e and no implementation. Matrix 6468988860 has 122 rows but is not approvable: Design §21 IDs 15–27 and 30–37 are paraphrased instead of verbatim; SOURCE_QUOTE_GAP on feature/DoD rows leaves required traceability unresolved. This audit used both frozen DOCX. A same-session correction is impossible under the terminal-session fence; authorize exactly one replacement from unchanged PR #7 branch/head. Keep M4 quarantined; no duplicate PR.",
+    "reason": "Recovery 12 session 10987024922384397097 created by fenced Bridge run 40696334817 under generation 40 and adopted as the sole active Jules session at generation 41. Recovery 11 9445771863876317298 is terminal/protected. PR #7 remains the only candidate branch/head; M4 stays quarantined.",
     "single_active_session_policy": true,
     "do_not_wake_terminal_sessions": [
       "9668882045283125937",
@@ -46,13 +46,13 @@
       "starting_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
       "plan_approval_required": true,
       "reason": "Recovery 11 terminal COMPLETED with outputs=null after planGenerated only; cannot be messaged or resumed. Its matrix paraphrases frozen quotes. This replacement is authorized only because same-session continuation is impossible, and continues existing PR #7 at the exact same head/base.",
-      "session_id": null,
-      "status": "AUTHORIZED_AWAITING_CREATION",
-      "created_via_bridge_run": null,
-      "adopted_generation": null
+      "session_id": "10987024922384397097",
+      "status": "CREATED_AWAITING_ADOPTION",
+      "created_via_bridge_run": 40696334817,
+      "adopted_generation": 41
     },
     "last_terminal_recovery_session": "9445771863876317298",
-    "active_recovery_session": null,
+    "active_recovery_session": "10987024922384397097",
     "last_terminal_recovery_state": "COMPLETED_PLAN_INVALID_OUTPUTS_NULL",
     "plan_audit": {
       "state": "REJECTED_NEEDS_CORRECTION",
@@ -119,7 +119,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": true,
+  "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
