@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 18,
+  "generation": 19,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
@@ -23,7 +23,9 @@
     "same_session_retry_command_key": "g16-retro-f95-semantic-fix-threads-registry",
     "same_session_retry_result": "MESSAGE_ACCEPTED_BUT_SESSION_REMAINED_COMPLETED",
     "replacement_required": true,
-    "reason": "Semantic audit found proven repair work at f95a676..., but the existing recovery session is terminal and did not resume after a fenced send-message. A fresh recovery session is authorized from the exact current PR #7 head only for these fixes."
+    "reason": "Semantic audit found proven repair work at f95a676..., but the existing recovery session is terminal and did not resume after a fenced send-message. A fresh recovery session is authorized from the exact current PR #7 head only for these fixes.",
+    "single_active_session_policy": true,
+    "do_not_wake_terminal_sessions": ["9668882045283125937", "9465567810961076340"]
   },
   "retro_audit": {
     "m1": {
@@ -96,6 +98,8 @@
     "github_ci_is_mechanical_only": true,
     "inspect_every_jules_branch_head": true,
     "continuous_supervisor_interval_minutes": 5,
+    "single_active_jules_session": true,
+    "never_message_terminal_jules_session": true,
     "production_allowed": false,
     "production_db_allowed": false,
     "semantic_pass_required_after_ci": true,
