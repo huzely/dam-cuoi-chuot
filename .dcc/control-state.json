@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 15,
+  "generation": 16,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "WAITING_PLAN",
+  "status": "SEMANTIC_AUDIT_REQUIRED",
   "jules_session_id": "9465567810961076340",
   "approved_plan_id": null,
   "pr_number": 7,
@@ -20,47 +20,38 @@
     "historical_session": "9668882045283125937",
     "result": "COMPLETED_SESSION_DID_NOT_RESUME",
     "replacement_session": "9465567810961076340",
+    "replacement_state": "COMPLETED",
     "reason": "Fresh retro-fix session created from the exact M3 audit baseline after the completed historical session remained terminal following a fenced send-message."
   },
   "retro_audit": {
     "m1": {
       "status": "GAP",
       "gaps": [
-        "Exact-head mechanical CI for the accepted M1 head f47358b73dbb99ff53be0f51b2df93ef7f4743b4 is not independently evidenced. The cited run 40604079763 is DCC Jules Command Bridge on main at ef29e2ff4d5eba00b5c992fee03f15847a08b593, not an M1 test run; PR #1's exact head has no GitHub Actions workflow runs and only CodeRabbit success.",
-        "PR #2's description reports that PostgreSQL integration failed with a sandbox IPv6 ENETUNREACH error; this is a Jules report, not successful exact-head independent TEST-database evidence.",
+        "Exact-head mechanical CI for the accepted M1 head f47358b73dbb99ff53be0f51b2df93ef7f4743b4 is not independently evidenced.",
+        "PR #2's historical PostgreSQL integration report was not successful exact-head independent TEST-database evidence.",
         "Full M1 requirement-to-code-to-test-to-exact-head-CI matrix is still outstanding."
-      ],
-      "evidence": {
-        "accepted_head": "f47358b73dbb99ff53be0f51b2df93ef7f4743b4",
-        "mismatched_claimed_run_id": 40604079763,
-        "claimed_run_actual": "DCC Jules Command Bridge; issue_comment event; head ef29e2ff4d5eba00b5c992fee03f15847a08b593; no test jobs",
-        "prs": [
-          1,
-          2,
-          3
-        ],
-        "exact_head_ci": "NO_WORKFLOW_RUNS",
-        "current_status": "GAP"
-      }
+      ]
     },
     "m2": {
-      "status": "GAP",
-      "gaps": [
-        "M2 production provider verification remains unproven on exact candidate head 2b07f7c11c09b70de5cf8910753d3db2900a0620: verifier errors interpolate err.message (possible token-bearing URL leakage); Google tokeninfo path lacks explicit expiry claim validation in application code; Threads /debug_token app-bound capability lacks authoritative Meta evidence and is mock-only.",
-        "Complete account/linking matrix and exact-head independent CI are still outstanding."
+      "status": "PENDING_REAUDIT",
+      "prior_gaps": [
+        "Provider verification security/capability findings from candidate 2b07f7c11c09b70de5cf8910753d3db2900a0620 require re-audit against latest head f95a676030750edd2ad7f64a4a73110397f49093.",
+        "Complete account/linking frozen-spec matrix remains outstanding."
       ]
     },
     "m3": {
-      "status": "GAP",
-      "gaps": [
-        "Candidate registry has 29 unique DOCX economic types, but ANTI_CHEAT_FINE is registered only as SPECIAL and the explicitly allowed SINK compatibility is absent.",
-        "Tests sample a few types rather than exhaustively checking all 29 type/class pairs and incompatible class rejection; matrix and exact-head CI are outstanding."
+      "status": "PENDING_REAUDIT",
+      "prior_gaps": [
+        "Transaction registry/class compatibility findings from candidate 2b07f7c11c09b70de5cf8910753d3db2900a0620 require re-audit against latest head f95a676030750edd2ad7f64a4a73110397f49093.",
+        "Complete M3 frozen-spec matrix remains outstanding."
       ],
       "mechanical_ci": {
-        "run_id": 40614954637,
-        "head_sha": "2b07f7c11c09b70de5cf8910753d3db2900a0620",
-        "status": "SKIPPED_EXACT_HEAD_CI",
-        "reason": "Resolver marked candidate inactive under stale expected_base_branch/SHA and implementation_pr_number=null; no test jobs ran."
+        "run_id": 40617210533,
+        "head_sha": "f95a676030750edd2ad7f64a4a73110397f49093",
+        "status": "PASS",
+        "unit_static": "PASS",
+        "postgres_test_integration": "PASS",
+        "repeat_same_test_database": "PASS"
       }
     }
   },
@@ -87,6 +78,8 @@
     "semantic_controller": "chatgpt",
     "implementation_worker": "jules",
     "evidence_plane": "github",
+    "mechanical_supervisor": "main:.dcc/supervisor.mjs",
+    "supervisor_workflow": "DCC Continuous Supervisor",
     "transition_mode": "compare_and_swap",
     "command_bus": "github_pr_issue_comments",
     "command_bus_pr_number": 7,
@@ -99,6 +92,7 @@
     "jules_final_report_is_not_evidence": true,
     "github_ci_is_mechanical_only": true,
     "inspect_every_jules_branch_head": true,
+    "continuous_supervisor_interval_minutes": 5,
     "production_allowed": false,
     "production_db_allowed": false,
     "semantic_pass_required_after_ci": true,
@@ -108,20 +102,15 @@
   },
   "candidate_audit": {
     "pr_number": 7,
-    "head_sha": "2b07f7c11c09b70de5cf8910753d3db2900a0620",
+    "head_sha": "f95a676030750edd2ad7f64a4a73110397f49093",
     "base_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
     "base_sha": "737097483495f1d650110a18788a21db62f71bba",
     "ancestry": "PASS",
-    "semantic_status": "GAP",
-    "findings": [
-      "provider-verifier.js does not exist in candidate diff; concrete implementation is in server/v2/domains/identity/verifier.js.",
-      "Google verification uses tokeninfo but code does not explicitly enforce exp/nbf; network exception interpolates err.message.",
-      "Facebook and Threads network exceptions interpolate err.message; credential values are placed in request URL.",
-      "Threads app-bound debug_token capability is not proven by authoritative Meta documentation; current test is a mock.",
-      "FROZEN_ECONOMIC_TRANSACTION_TYPES marks ANTI_CHEAT_FINE SPECIAL only, omitting allowed SINK compatibility.",
-      "economy.test.js samples only a few type/class pairs; no exhaustive registry acceptance matrix."
-    ],
-    "plan_status": "WAITING_FOR_CORRECTION",
-    "accepted": false
+    "jules_state": "COMPLETED",
+    "mechanical_ci_run_id": 40617210533,
+    "mechanical_ci": "PASS",
+    "semantic_status": "PENDING_REAUDIT",
+    "accepted": false,
+    "next_action": "ChatGPT must audit latest head f95a676030750edd2ad7f64a4a73110397f49093 against both frozen DOCX files, M1-M3 traceability, applicable invariants and DoD. If any GAP remains, send a precise correction; otherwise close retro audit before resuming M4."
   }
 }
