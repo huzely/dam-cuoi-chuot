@@ -46,10 +46,10 @@ export const HOLD_STATUSES = Object.freeze({
 
 /**
  * Authoritative Frozen Economic Transaction Registry mapping every approved economic
- * mutation type to its compatible transaction class (FAUCET, SINK, TRANSFER).
+ * mutation type strictly to its compatible transaction class (FAUCET, SINK, TRANSFER, SPECIAL).
  */
 export const FROZEN_ECONOMIC_TRANSACTION_TYPES = Object.freeze({
-  // FAUCET Class (authoritative money grant/credit)
+  // FAUCET Class (authoritative money grant/reward)
   SHOP_SALE: { type: 'SHOP_SALE', class: 'FAUCET' },
   WHOLESALE_SALE: { type: 'WHOLESALE_SALE', class: 'FAUCET' },
   NPC_JOB_REWARD: { type: 'NPC_JOB_REWARD', class: 'FAUCET' },
@@ -57,13 +57,8 @@ export const FROZEN_ECONOMIC_TRANSACTION_TYPES = Object.freeze({
   MINIGAME_REWARD: { type: 'MINIGAME_REWARD', class: 'FAUCET' },
   JIGSAW_REWARD: { type: 'JIGSAW_REWARD', class: 'FAUCET' },
   EVENT_REWARD: { type: 'EVENT_REWARD', class: 'FAUCET' },
-  RESTITUTION: { type: 'RESTITUTION', class: 'FAUCET' },
-  COURT_COMPENSATION: { type: 'COURT_COMPENSATION', class: 'FAUCET' },
-  LEGACY_IMPORT: { type: 'LEGACY_IMPORT', class: 'FAUCET' },
-  ADMIN_ADJUSTMENT: { type: 'ADMIN_ADJUSTMENT', class: 'FAUCET' },
-  REVERSAL: { type: 'REVERSAL', class: 'FAUCET' },
 
-  // SINK Class (authoritative money charge/debit)
+  // SINK Class (purchase/fee/tax/fine)
   STOCK_PURCHASE: { type: 'STOCK_PURCHASE', class: 'SINK' },
   SHOP_UPGRADE: { type: 'SHOP_UPGRADE', class: 'SINK' },
   HOUSE_PURCHASE: { type: 'HOUSE_PURCHASE', class: 'SINK' },
@@ -75,14 +70,21 @@ export const FROZEN_ECONOMIC_TRANSACTION_TYPES = Object.freeze({
   SUU: { type: 'SUU', class: 'SINK' },
   FINE: { type: 'FINE', class: 'SINK' },
   GUILD_DUES: { type: 'GUILD_DUES', class: 'SINK' },
-  DISGORGE_ILLICIT_GAIN: { type: 'DISGORGE_ILLICIT_GAIN', class: 'SINK' },
-  ANTI_CHEAT_FINE: { type: 'ANTI_CHEAT_FINE', class: 'SINK' },
 
-  // TRANSFER Class (peer-to-peer / account-to-account value conservation)
+  // TRANSFER Class (p2p/restitution/court compensation value conservation)
   PLAYER_WAGE: { type: 'PLAYER_WAGE', class: 'TRANSFER' },
   GIFT: { type: 'GIFT', class: 'TRANSFER' },
   CARD_SETTLEMENT: { type: 'CARD_SETTLEMENT', class: 'TRANSFER' },
   THEFT: { type: 'THEFT', class: 'TRANSFER' },
+  RESTITUTION: { type: 'RESTITUTION', class: 'TRANSFER' },
+  COURT_COMPENSATION: { type: 'COURT_COMPENSATION', class: 'TRANSFER' },
+
+  // SPECIAL Class (migration/reversal/admin/security/disgorgement)
+  LEGACY_IMPORT: { type: 'LEGACY_IMPORT', class: 'SPECIAL' },
+  ADMIN_ADJUSTMENT: { type: 'ADMIN_ADJUSTMENT', class: 'SPECIAL' },
+  REVERSAL: { type: 'REVERSAL', class: 'SPECIAL' },
+  DISGORGE_ILLICIT_GAIN: { type: 'DISGORGE_ILLICIT_GAIN', class: 'SPECIAL' },
+  ANTI_CHEAT_FINE: { type: 'ANTI_CHEAT_FINE', class: 'SPECIAL' },
 });
 
 /**

@@ -208,12 +208,20 @@ test('M2.2 maps PostgreSQL 23505 only for the exact provider identity constraint
 });
 
 test('HttpProviderVerifier verifies Google, Facebook, Threads assertions and fails closed on invalid credentials', async () => {
-  // 1. Missing configured client IDs fails closed
+  // 1. Missing configured client IDs / app secrets fails closed
   const unconfiguredVerifier = new HttpProviderVerifier({
     fetchImpl: async () => ({ ok: true, json: async () => ({}) }),
   });
   await assert.rejects(
     unconfiguredVerifier.verifyAssertion({ provider: 'GOOGLE', assertionToken: 'tok123' }),
+    InvalidProviderAssertionError
+  );
+  await assert.rejects(
+    unconfiguredVerifier.verifyAssertion({ provider: 'FACEBOOK', assertionToken: 'tok123' }),
+    InvalidProviderAssertionError
+  );
+  await assert.rejects(
+    unconfiguredVerifier.verifyAssertion({ provider: 'THREADS', assertionToken: 'tok123' }),
     InvalidProviderAssertionError
   );
 
@@ -257,6 +265,7 @@ test('HttpProviderVerifier verifies Google, Facebook, Threads assertions and fai
   // 3. Facebook verification success and app_id mismatch rejection
   const facebookVerifier = new HttpProviderVerifier({
     facebookAppId: 'expected-fb-app-id',
+    facebookAppAccessToken: 'valid-fb-app-token',
     fetchImpl: async (url) => {
       if (url.includes('input_token=valid-fb-token')) {
         return {
@@ -282,9 +291,15 @@ test('HttpProviderVerifier verifies Google, Facebook, Threads assertions and fai
   // 4. Threads verification
   const threadsVerifier = new HttpProviderVerifier({
     threadsAppId: 'expected-threads-app-id',
+    threadsAppAccessToken: 'valid-threads-app-token',
     fetchImpl: async (url) => {
-      if (url.includes('graph.threads.net') && url.includes('valid-threads-token')) {
-        return { ok: true, json: async () => ({ id: 'threads-user-101' }) };
+      if (url.includes('input_token=valid-threads-token')) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: { is_valid: true, app_id: 'expected-threads-app-id', user_id: 'threads-user-101' },
+          }),
+        };
       }
       return { ok: false };
     },

@@ -7,9 +7,6 @@ import {
   InvalidProviderAssertionError,
 } from './index.js';
 
-// Query param name builders to avoid static scan literal detection
-const PARAM_ACCESS = ['access', 'token'].join('_');
-
 export class ProviderVerifierPort {
   /**
    * Verifies a provider assertion payload/token server-side.
@@ -89,7 +86,10 @@ export class HttpProviderVerifier extends ProviderVerifierPort {
    * @param {string} [config.googleClientId]
    * @param {string} [config.facebookAppId]
    * @param {string} [config.facebookAppSecret]
+   * @param {string} [config.facebookAppAccessToken]
    * @param {string} [config.threadsAppId]
+   * @param {string} [config.threadsAppSecret]
+   * @param {string} [config.threadsAppAccessToken]
    * @param {Function} [config.fetchImpl] - Dependency-injected fetch implementation
    */
   constructor(config = {}) {
@@ -97,7 +97,10 @@ export class HttpProviderVerifier extends ProviderVerifierPort {
     this.googleClientId = config.googleClientId || process.env.GOOGLE_CLIENT_ID || null;
     this.facebookAppId = config.facebookAppId || process.env.FACEBOOK_APP_ID || null;
     this.facebookAppSecret = config.facebookAppSecret || process.env.FACEBOOK_APP_SECRET || null;
+    this.facebookAppAccessToken = config.facebookAppAccessToken || process.env.FACEBOOK_APP_ACCESS_TOKEN || null;
     this.threadsAppId = config.threadsAppId || process.env.THREADS_APP_ID || null;
+    this.threadsAppSecret = config.threadsAppSecret || process.env.THREADS_APP_SECRET || null;
+    this.threadsAppAccessToken = config.threadsAppAccessToken || process.env.THREADS_APP_ACCESS_TOKEN || null;
     this.fetchImpl = config.fetchImpl || globalThis.fetch;
 
     if (typeof this.fetchImpl !== 'function') {
@@ -177,13 +180,17 @@ export class HttpProviderVerifier extends ProviderVerifierPort {
       throw new InvalidProviderAssertionError('Facebook verification requires configured facebookAppId.');
     }
 
-    const appAccessToken = (this.facebookAppId && this.facebookAppSecret)
-      ? `${encodeURIComponent(this.facebookAppId)}|${encodeURIComponent(this.facebookAppSecret)}`
-      : encodeURIComponent(authToken);
+    let appAccessToken = this.facebookAppAccessToken;
+    if (!appAccessToken) {
+      if (!this.facebookAppSecret) {
+        throw new InvalidProviderAssertionError('Facebook verification requires configured facebookAppSecret or facebookAppAccessToken.');
+      }
+      appAccessToken = `${encodeURIComponent(this.facebookAppId)}|${encodeURIComponent(this.facebookAppSecret)}`;
+    }
 
     let response;
     try {
-      response = await this.fetchImpl(`https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(authToken)}&${PARAM_ACCESS}=${appAccessToken}`);
+      response = await this.fetchImpl(`https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(authToken)}&access_token=${appAccessToken}`);
     } catch (err) {
       throw new InvalidProviderAssertionError(`Facebook debug_token request failed: ${err.message}`);
     }
@@ -223,53 +230,30 @@ export class HttpProviderVerifier extends ProviderVerifierPort {
       throw new InvalidProviderAssertionError('Threads verification requires configured threadsAppId.');
     }
 
-    // Threads token inspection via Threads API
+    let appAccessToken = this.threadsAppAccessToken;
+    if (!appAccessToken) {
+      if (!this.threadsAppSecret) {
+        throw new InvalidProviderAssertionError('Threads verification requires configured threadsAppSecret or threadsAppAccessToken.');
+      }
+      appAccessToken = `${encodeURIComponent(this.threadsAppId)}|${encodeURIComponent(this.threadsAppSecret)}`;
+    }
+
     let response;
     try {
-      response = await this.fetchImpl(`https://graph.threads.net/v1.0/me?fields=id&${PARAM_ACCESS}=${encodeURIComponent(authToken)}`);
+      response = await this.fetchImpl(`https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(authToken)}&access_token=${appAccessToken}`);
     } catch (err) {
-      throw new InvalidProviderAssertionError(`Threads API request failed: ${err.message}`);
+      throw new InvalidProviderAssertionError(`Threads debug_token request failed: ${err.message}`);
     }
 
     if (!response || !response.ok) {
-      // Fallback inspection via Meta debug_token endpoint for Threads tokens
-      return await this._verifyFacebookThreadsFallback(authToken);
-    }
-
-    let payload;
-    try {
-      payload = await response.json();
-    } catch (err) {
-      throw new InvalidProviderAssertionError('Failed to parse Threads API response.');
-    }
-
-    if (!payload || !payload.id) {
-      throw new InvalidProviderAssertionError('Threads token verification failed: missing user id.');
-    }
-
-    return {
-      provider: 'THREADS',
-      providerSubject: validateProviderSubject(String(payload.id)),
-    };
-  }
-
-  async _verifyFacebookThreadsFallback(authToken) {
-    let response;
-    try {
-      response = await this.fetchImpl(`https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(authToken)}&${PARAM_ACCESS}=${encodeURIComponent(authToken)}`);
-    } catch (err) {
-      throw new InvalidProviderAssertionError(`Threads token fallback inspection failed: ${err.message}`);
-    }
-
-    if (!response || !response.ok) {
-      throw new InvalidProviderAssertionError('Threads token verification failed or token is invalid.');
+      throw new InvalidProviderAssertionError('Threads token verification request failed.');
     }
 
     let result;
     try {
       result = await response.json();
     } catch (err) {
-      throw new InvalidProviderAssertionError('Failed to parse Threads token inspection response.');
+      throw new InvalidProviderAssertionError('Failed to parse Threads debug_token response.');
     }
 
     const data = result?.data;

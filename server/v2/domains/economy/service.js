@@ -106,7 +106,7 @@ export class EconomyService {
   async grantFaucet({
     userId,
     amount,
-    type = 'CHAPTER_REWARD',
+    type,
     source = 'system',
     referenceId = null,
     metadata = {},
@@ -188,7 +188,7 @@ export class EconomyService {
   async chargeSink({
     userId,
     amount,
-    type = 'SHOP_UPGRADE',
+    type,
     source = 'system',
     referenceId = null,
     metadata = {},
@@ -277,7 +277,7 @@ export class EconomyService {
     senderId,
     recipientId,
     amount,
-    type = 'CARD_SETTLEMENT',
+    type,
     source = 'p2p',
     referenceId = null,
     metadata = {},
