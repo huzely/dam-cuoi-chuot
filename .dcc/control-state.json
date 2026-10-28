@@ -1,34 +1,62 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 9,
+  "generation": 10,
   "protocol_file": ".dcc/coordination-protocol.md",
-  "milestone": "M1-M3_RETRO_AUDIT",
-  "milestone_title": "Frozen-spec retrospective audit — M1 through M3",
-  "status": "AUDIT_REQUIRED",
-  "jules_session_id": null,
-  "approved_plan_id": null,
+  "milestone": "M1-M3_RETRO_FIX",
+  "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
+  "status": "CORRECTION_REQUIRED",
+  "jules_session_id": "9668882045283125937",
+  "approved_plan_id": "cb4ac82425b445718732b8e1dc873914",
   "pr_number": 7,
   "control_pr_number": 7,
-  "implementation_pr_number": null,
+  "implementation_pr_number": 7,
   "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
   "expected_start_sha": "76262b174ac85bda1d6572343760737712c31c77",
-  "expected_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
-  "expected_base_sha": "76262b174ac85bda1d6572343760737712c31c77",
+  "expected_base_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
+  "expected_base_sha": "737097483495f1d650110a18788a21db62f71bba",
+  "audit_baseline_head_sha": "76262b174ac85bda1d6572343760737712c31c77",
   "previous_milestone": {
     "milestone": "M3",
-    "status": "PROVISIONAL_PASS_PENDING_FROZEN_SPEC_AUDIT",
+    "status": "PROVISIONAL_PASS_REVOKED_BY_FROZEN_SPEC_AUDIT",
     "session_id": "9668882045283125937",
     "pr_number": 7,
-    "accepted_head_sha": "76262b174ac85bda1d6572343760737712c31c77",
-    "accepted_ci_run_id": 40604079763
+    "previous_head_sha": "76262b174ac85bda1d6572343760737712c31c77",
+    "previous_ci_run_id": 40604079763,
+    "note": "CI evidence is valid mechanical evidence, but semantic frozen-spec gaps remain."
+  },
+  "retro_audit": {
+    "m1": {
+      "status": "EVIDENCE_PASS_PENDING_FINAL_MATRIX",
+      "evidence": "M3 exact-head CI run 40604079763 re-ran M1 unit/static and live PostgreSQL integration, including migrations 001/002, transaction/outbox, admin audit, config, kill switches, idempotency and concurrency."
+    },
+    "m2": {
+      "status": "GAP",
+      "gaps": [
+        "Production provider verification is not implemented: server/v2/domains/identity/verifier.js contains only ProviderVerifierPort and MockProviderVerifier. Frozen spec requires Google/Facebook/Threads linking and explicit Threads/Meta capability verification at implementation time."
+      ]
+    },
+    "m3": {
+      "status": "GAP",
+      "gaps": [
+        "server/v2/domains/economy/index.js claims a frozen transaction registry but registers only faucet.grant, sink.fee, transfer.p2p and hold lifecycle types. The frozen DOCX registry requires the named economic types SHOP_SALE through ANTI_CHEAT_FINE with class compatibility and fail-closed validation."
+      ],
+      "mechanical_ci": {
+        "run_id": 40604079763,
+        "head_sha": "76262b174ac85bda1d6572343760737712c31c77",
+        "status": "PASS_BEFORE_RETRO_FIX"
+      }
+    }
   },
   "suspended_next_milestone": {
     "milestone": "M4",
     "session_id": "4853011554120262538",
-    "status_at_freeze": "WAITING_PLAN_APPROVAL",
-    "implementation_started": false,
-    "reason": "M1-M3 must pass the two frozen DOCX files before M4 plan approval or implementation."
+    "pr_number": 8,
+    "branch": "m4-progress-unlock-v2-4853011554120262538",
+    "head_sha": "8c13a9ad089a1f97d878683f803e9418afa8b213",
+    "status_at_freeze": "IMPLEMENTED_PREMATURELY_QUARANTINED",
+    "implementation_started": true,
+    "reason": "Jules created M4 PR #8 before the retro freeze was established. Do not accept, merge, verify as active milestone, or continue M4 until M1-M3 retro fixes pass. Its baseline becomes stale if PR #7 changes."
   },
   "frozen_spec": {
     "documents": [
@@ -37,11 +65,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "audit_scope": {
-    "milestones": ["M1", "M2", "M3"],
-    "requirement": "Build requirement -> code -> test -> exact-head CI evidence for all applicable frozen-spec requirements, invariants and Definition of Done. Unproven means GAP. Repair gaps before M4."
-  },
-  "live_head_source": "frozen_at_m3_accepted_head",
+  "live_head_source": "github_pr",
   "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
