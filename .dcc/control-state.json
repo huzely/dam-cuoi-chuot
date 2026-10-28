@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 11,
+  "generation": 12,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "RECOVERY_SESSION_REQUIRED",
-  "jules_session_id": null,
+  "status": "WAITING_PLAN",
+  "jules_session_id": "9465567810961076340",
   "approved_plan_id": null,
   "pr_number": 7,
   "control_pr_number": 7,
@@ -17,24 +17,15 @@
   "expected_base_sha": "76262b174ac85bda1d6572343760737712c31c77",
   "audit_baseline_head_sha": "76262b174ac85bda1d6572343760737712c31c77",
   "recovery": {
-    "attempted_historical_session": "9668882045283125937",
+    "historical_session": "9668882045283125937",
     "result": "COMPLETED_SESSION_DID_NOT_RESUME",
-    "evidence": "Generation 10 send-message bridge succeeded, but a subsequent live status read still returned state COMPLETED and no new user/agent activity. A fresh retro-fix session is therefore required rather than pretending the old session is active."
+    "replacement_session": "9465567810961076340",
+    "reason": "Fresh retro-fix session created from the exact M3 audit baseline after the completed historical session remained terminal following a fenced send-message."
   },
   "retro_audit": {
-    "m1": {
-      "status": "EVIDENCE_PASS_PENDING_FINAL_MATRIX",
-      "evidence": "Exact-head CI run 40604079763 re-ran M1 unit/static and live PostgreSQL integration."
-    },
-    "m2": {
-      "status": "GAP",
-      "gaps": ["Production provider verification is absent; only ProviderVerifierPort and MockProviderVerifier exist. Google/Facebook/Threads real verification and explicit Threads/Meta capability verification remain unproven."]
-    },
-    "m3": {
-      "status": "GAP",
-      "gaps": ["The claimed frozen transaction registry contains only generic/internal operation types instead of the DOCX economic transaction type registry and class compatibility."],
-      "mechanical_ci": {"run_id": 40604079763, "head_sha": "76262b174ac85bda1d6572343760737712c31c77", "status": "PASS_BEFORE_RETRO_FIX"}
-    }
+    "m1": {"status": "EVIDENCE_PASS_PENDING_FINAL_MATRIX", "evidence": "Exact-head CI run 40604079763 re-ran M1 unit/static and live PostgreSQL integration."},
+    "m2": {"status": "GAP", "gaps": ["Production provider verification is absent; only ProviderVerifierPort and MockProviderVerifier exist. Google/Facebook/Threads real verification and explicit Threads/Meta capability verification remain unproven."]},
+    "m3": {"status": "GAP", "gaps": ["The claimed frozen transaction registry contains only generic/internal operation types instead of the DOCX economic transaction type registry and class compatibility."], "mechanical_ci": {"run_id": 40604079763, "head_sha": "76262b174ac85bda1d6572343760737712c31c77", "status": "PASS_BEFORE_RETRO_FIX"}}
   },
   "suspended_next_milestone": {
     "milestone": "M4",
@@ -50,9 +41,7 @@
     "documents": ["Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx", "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx"],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": true,
-  "next_milestone": "M1-M3 Retro Fix",
-  "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
+  "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
