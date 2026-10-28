@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 51,
+  "generation": 52,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
@@ -58,7 +58,9 @@
         "result": "FAILED_PRECONDITION",
         "http_status": 400,
         "quota_confirmed": false,
-        "session_created": false
+        "session_created": false,
+        "latest_supervisor_run_id": 40726339214,
+        "supervisor_attention": "SEMANTIC_CODE_AUDIT"
       },
       "retry_policy": "Retry the same authorized Recovery15 only after the Jules API precondition is cleared; do not message terminal Recovery14 or create a second pending recovery."
     },
@@ -113,10 +115,10 @@
         "M3 requirement/invariant/DoD matrix is incomplete; report does not map every authoritative money-flow, wallet concurrency, ledger durability/idempotency, hold transition/double-action and transaction-registry requirement to exact code, named tests, exact-head CI, and status."
       ],
       "mechanical_ci": {
-        "run_id": 40622093897,
+        "run_id": 40726218314,
         "head_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
         "status": "PASS",
-        "evidence": "DCC Mechanical Verification exact-head-ci job passed ancestry, unit/static tests, PostgreSQL TEST integration, and a repeat integration run on the same persistent TEST database."
+        "evidence": "Exact-head-ci success with exact SHA checkout/ancestry, unit/static, POSTGRES_TEST_URL PostgreSQL integration twice on same TEST DB; semantic acceptance remains GAP."
       }
     }
   },
@@ -173,11 +175,12 @@
     "base_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
     "base_sha": "737097483495f1d650110a18788a21db62f71bba",
     "ancestry": "PASS",
-    "mechanical_ci_run_id": 40622093897,
+    "mechanical_ci_run_id": 40726218314,
     "mechanical_ci": "PASS",
     "semantic_status": "BLOCKED_RECOVERY_CREATE_PRECONDITION",
     "accepted": false,
-    "next_action": "Retry only the checkpoint-authorized Recovery15 creation after Jules API precondition resolves. No quota confirmed; do not wake terminal sessions. Keep PR #7 and M4 quarantine unchanged."
+    "next_action": "Preserve terminal Recovery14 and the one authorized but uncreated Recovery15. Retry the same Recovery15 creation after Jules API FAILED_PRECONDITION resolves; no quota confirmed. Do not wake terminal sessions. Keep PR #7/M4 quarantine unchanged.",
+    "mechanical_ci_evidence": "DCC Mechanical Verification exact-head-ci run 40726218314 checked out exact PR #7 head d0b36bf7763c868619c617593c5323d7d3294975, verified ancestry, ran unit/static and PostgreSQL TEST integration twice on the same persistent TEST database. Mechanical evidence only; semantic status remains blocked."
   },
   "next_milestone": "M1-M3 Retro Fix Recovery 15",
   "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
