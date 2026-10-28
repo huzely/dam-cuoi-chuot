@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 50,
+  "generation": 51,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "IN_PROGRESS",
+  "status": "WAITING_FOR_JULES_API_PRECONDITION",
   "jules_session_id": "12369416621004182728",
   "approved_plan_id": null,
   "pr_number": 7,
@@ -21,7 +21,7 @@
     "first_replacement_session": "9465567810961076340",
     "first_replacement_state": "COMPLETED",
     "replacement_session": null,
-    "replacement_state": "TERMINAL_PLAN_NOT_APPROVABLE",
+    "replacement_state": "CREATE_FAILED_PRECONDITION",
     "replacement_start_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
     "reason": "Recovery 13 session 17428010912306933625 created by fenced Bridge run 40707001944 under generation 42 and adopted as the sole active Jules session at generation 43. It continues existing PR #7, branch/head/base unchanged. Recovery 12 is terminal/protected.",
     "single_active_session_policy": true,
@@ -50,9 +50,17 @@
       "plan_approval_required": true,
       "reason": "Recovery14 12369416621004182728 is confirmed terminal by Bridge run 40725906569 (state COMPLETED, outputs null; only planGenerated activity). The plan is not approvable: it omits dedicated authoritative section-citation and exact-head SHA columns, and generic pre-commit testing conflicts with the approved matrix-only/no-tests phase. No same-session correction/approval is safe because the session is terminal. One replacement is authorized solely to obtain an approvable matrix-only plan, preserving PR #7 branch/head and M4 quarantine.",
       "session_id": null,
-      "status": "AUTHORIZED_NOT_CREATED",
+      "status": "CREATE_FAILED_PRECONDITION",
       "created_via_bridge_run": null,
-      "adopted_generation": null
+      "adopted_generation": null,
+      "last_create_attempt": {
+        "bridge_run_id": 40726191003,
+        "result": "FAILED_PRECONDITION",
+        "http_status": 400,
+        "quota_confirmed": false,
+        "session_created": false
+      },
+      "retry_policy": "Retry the same authorized Recovery15 only after the Jules API precondition is cleared; do not message terminal Recovery14 or create a second pending recovery."
     },
     "last_terminal_recovery_session": "12369416621004182728",
     "active_recovery_session": null,
@@ -72,7 +80,7 @@
         "Plan schema does not require an exact evidence SHA field per row.",
         "Generic 'Complete Pre-Commit Steps' calls for testing/verification and conflicts with the matrix-only phase's explicit no-tests authorization."
       ],
-      "same_session_continuation": "Impossible: Bridge run 40725906569 reports COMPLETED and outputs=null; session is terminal/protected from further commands."
+      "same_session_continuation": "Impossible: terminal Bridge status; Recovery15 API create failed with 400 FAILED_PRECONDITION."
     },
     "current_session_observation": {
       "session_id": "17428010912306933625",
@@ -167,9 +175,9 @@
     "ancestry": "PASS",
     "mechanical_ci_run_id": 40622093897,
     "mechanical_ci": "PASS",
-    "semantic_status": "FAIL_RECOVERY14_PLAN_NOT_APPROVABLE",
+    "semantic_status": "BLOCKED_RECOVERY_CREATE_PRECONDITION",
     "accepted": false,
-    "next_action": "Create one authorized Recovery15 on the existing PR #7 branch/head for a corrected matrix-only plan; no code or tests."
+    "next_action": "Retry only the checkpoint-authorized Recovery15 creation after Jules API precondition resolves. No quota confirmed; do not wake terminal sessions. Keep PR #7 and M4 quarantine unchanged."
   },
   "next_milestone": "M1-M3 Retro Fix Recovery 15",
   "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
@@ -178,7 +186,7 @@
     "status": "COMPLETED_PLAN_ONLY_OUTPUTS_NULL",
     "latest_plan_id": "28608e06235f4a5387f04add7227a2d6",
     "latest_plan_activity_id": "1fa9f3f447e84863a97912dd07a8a77e",
-    "approval_action": "Do not approve/message terminal session. Plan audit found missing citation/SHA fields and an out-of-scope generic testing step."
+    "approval_action": "Terminal; do not message or approve. Recovery15 create attempt failed at Jules API precondition."
   },
   "matrix_audit": {
     "state": "FAIL_MATRIX_NOT_APPROVABLE",
