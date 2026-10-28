@@ -11,6 +11,7 @@ import {
   EVENT_TYPES,
   HOLD_STATUSES,
   LEDGER_IDEMPOTENCY_UNIQUE_CONSTRAINT,
+  TRANSACTION_TYPE_CLASS_MAP,
   validateIntegerDong,
   validateTransactionClass,
   validateTransactionType,
@@ -106,7 +107,7 @@ export class EconomyService {
   async grantFaucet({
     userId,
     amount,
-    type = 'faucet.grant',
+    type,
     source = 'system',
     referenceId = null,
     metadata = {},
@@ -118,8 +119,9 @@ export class EconomyService {
     }
 
     const valAmount = validateIntegerDong(amount);
-    const validClass = validateTransactionClass('FAUCET');
-    const validType = validateTransactionType(type);
+    const validType = validateTransactionType(type, 'FAUCET');
+    const allowedClasses = TRANSACTION_TYPE_CLASS_MAP[validType] || [];
+    const validClass = allowedClasses.includes('FAUCET') ? 'FAUCET' : 'SPECIAL';
 
     return await this._withTx(tx, async (activeTx) => {
       let wallet = await activeTx.wallets.getByUserId(userId);
@@ -188,7 +190,7 @@ export class EconomyService {
   async chargeSink({
     userId,
     amount,
-    type = 'sink.fee',
+    type,
     source = 'system',
     referenceId = null,
     metadata = {},
@@ -200,8 +202,9 @@ export class EconomyService {
     }
 
     const valAmount = validateIntegerDong(amount);
-    const validClass = validateTransactionClass('SINK');
-    const validType = validateTransactionType(type);
+    const validType = validateTransactionType(type, 'SINK');
+    const allowedClasses = TRANSACTION_TYPE_CLASS_MAP[validType] || [];
+    const validClass = allowedClasses.includes('SINK') ? 'SINK' : 'SPECIAL';
 
     return await this._withTx(tx, async (activeTx) => {
       const wallet = await activeTx.wallets.getByUserId(userId);
@@ -277,7 +280,7 @@ export class EconomyService {
     senderId,
     recipientId,
     amount,
-    type = 'transfer.p2p',
+    type,
     source = 'p2p',
     referenceId = null,
     metadata = {},
@@ -295,8 +298,9 @@ export class EconomyService {
     }
 
     const valAmount = validateIntegerDong(amount);
-    const validClass = validateTransactionClass('TRANSFER');
-    const validType = validateTransactionType(type);
+    const validType = validateTransactionType(type, 'TRANSFER');
+    const allowedClasses = TRANSACTION_TYPE_CLASS_MAP[validType] || [];
+    const validClass = allowedClasses.includes('TRANSFER') ? 'TRANSFER' : 'SPECIAL';
 
     return await this._withTx(tx, async (activeTx) => {
       const senderWallet = await activeTx.wallets.getByUserId(senderId);

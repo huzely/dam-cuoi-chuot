@@ -11,7 +11,16 @@ import {
   InvalidProviderAssertionError,
 } from './errors.js';
 import { AccountService } from './service.js';
-import { ProviderVerifierPort, MockProviderVerifier } from './verifier.js';
+import {
+  ProviderVerifierPort,
+  MockProviderVerifier,
+} from './verifier.js';
+import {
+  GoogleProviderVerifier,
+  FacebookProviderVerifier,
+  ThreadsProviderVerifier,
+  ProductionProviderVerifier,
+} from '../../adapters/provider-verifier.js';
 import { handleLinkProviderIdentityCommand } from './commands.js';
 
 export const DOMAIN_NAME = 'identity';
@@ -108,5 +117,9 @@ export {
   InvalidProviderAssertionError,
   ProviderVerifierPort,
   MockProviderVerifier,
+  GoogleProviderVerifier,
+  FacebookProviderVerifier,
+  ThreadsProviderVerifier,
+  ProductionProviderVerifier,
   handleLinkProviderIdentityCommand,
 };

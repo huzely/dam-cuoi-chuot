@@ -60,7 +60,7 @@ test('M3 PostgreSQL Economy, Wallet V2, Ledger & Holds Integration', { skip: !te
       const userId = account.userId;
 
       // Faucet grant 1000 đồng
-      const grantRes = await economyService.grantFaucet({ userId, amount: 1000, type: 'faucet.grant' });
+      const grantRes = await economyService.grantFaucet({ userId, amount: 1000, type: 'CHAPTER_REWARD' });
       assert.equal(grantRes.wallet.availableBalance, 1000n);
       assert.equal(grantRes.wallet.version, 2);
       assert.equal(grantRes.ledgerEntry.amount, 1000n);
@@ -68,7 +68,7 @@ test('M3 PostgreSQL Economy, Wallet V2, Ledger & Holds Integration', { skip: !te
       assert.equal(grantRes.ledgerEntry.class, 'FAUCET');
 
       // Sink charge 400 đồng
-      const sinkRes = await economyService.chargeSink({ userId, amount: 400, type: 'sink.fee' });
+      const sinkRes = await economyService.chargeSink({ userId, amount: 400, type: 'STOCK_PURCHASE' });
       assert.equal(sinkRes.wallet.availableBalance, 600n);
       assert.equal(sinkRes.wallet.version, 3);
       assert.equal(sinkRes.ledgerEntry.amount, -400n);
@@ -77,7 +77,7 @@ test('M3 PostgreSQL Economy, Wallet V2, Ledger & Holds Integration', { skip: !te
 
       // Attempt sink charge 700 đồng exceeding 600 đồng available -> InsufficientBalanceError
       await assert.rejects(
-        economyService.chargeSink({ userId, amount: 700, type: 'sink.fee' }),
+        economyService.chargeSink({ userId, amount: 700, type: 'STOCK_PURCHASE' }),
         InsufficientBalanceError
       );
 
@@ -92,12 +92,12 @@ test('M3 PostgreSQL Economy, Wallet V2, Ledger & Holds Integration', { skip: !te
       const idempotencyKey = `idempotent_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
       // Initial faucet grant with idempotencyKey
-      const first = await economyService.grantFaucet({ userId, amount: 500, idempotencyKey });
+      const first = await economyService.grantFaucet({ userId, amount: 500, type: 'CHAPTER_REWARD', idempotencyKey });
       assert.equal(first.wallet.availableBalance, 500n);
 
       // Retry with same idempotencyKey throws DuplicateLedgerIdempotencyError
       await assert.rejects(
-        economyService.grantFaucet({ userId, amount: 500, idempotencyKey }),
+        economyService.grantFaucet({ userId, amount: 500, type: 'CHAPTER_REWARD', idempotencyKey }),
         DuplicateLedgerIdempotencyError
       );
 
@@ -117,13 +117,13 @@ test('M3 PostgreSQL Economy, Wallet V2, Ledger & Holds Integration', { skip: !te
       const sender = await accountService.createAccount();
       const recipient = await accountService.createAccount();
 
-      await economyService.grantFaucet({ userId: sender.userId, amount: 2000 });
+      await economyService.grantFaucet({ userId: sender.userId, amount: 2000, type: 'CHAPTER_REWARD' });
 
       const xferRes = await economyService.transferP2P({
         senderId: sender.userId,
         recipientId: recipient.userId,
         amount: 800,
-        type: 'transfer.p2p',
+        type: 'GIFT',
       });
 
       assert.equal(xferRes.senderWallet.availableBalance, 1200n);
@@ -141,7 +141,7 @@ test('M3 PostgreSQL Economy, Wallet V2, Ledger & Holds Integration', { skip: !te
     await t.test('Complete Hold lifecycle: CREATED -> ACTIVE -> RELEASED or CAPTURED with coherent accounting & durable idempotency', async () => {
       const account = await accountService.createAccount();
       const userId = account.userId;
-      await economyService.grantFaucet({ userId, amount: 3000 });
+      await economyService.grantFaucet({ userId, amount: 3000, type: 'CHAPTER_REWARD' });
 
       // 1. CREATE HOLD (CREATED state)
       const hold = await economyService.createHold({
@@ -220,7 +220,7 @@ test('M3 PostgreSQL Economy, Wallet V2, Ledger & Holds Integration', { skip: !te
     await t.test('Atomic rollback leaves zero partial wallet, ledger, or hold state on failure', async () => {
       const account = await accountService.createAccount();
       const userId = account.userId;
-      await economyService.grantFaucet({ userId, amount: 1500 });
+      await economyService.grantFaucet({ userId, amount: 1500, type: 'CHAPTER_REWARD' });
 
       await assert.rejects(
         pgDriver.withTransaction(async (tx) => {

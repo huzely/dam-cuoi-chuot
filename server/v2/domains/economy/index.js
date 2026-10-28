@@ -44,14 +44,112 @@ export const HOLD_STATUSES = Object.freeze({
   CAPTURED: 'CAPTURED',
 });
 
+/**
+ * Frozen Economic Transaction Registry (Canonical Types).
+ * Strictly mapped to frozen DOCX specification.
+ */
+export const FROZEN_ECONOMIC_TRANSACTION_TYPES = Object.freeze({
+  // FAUCET
+  SHOP_SALE: 'SHOP_SALE',
+  WHOLESALE_SALE: 'WHOLESALE_SALE',
+  NPC_JOB_REWARD: 'NPC_JOB_REWARD',
+  CHAPTER_REWARD: 'CHAPTER_REWARD',
+  MINIGAME_REWARD: 'MINIGAME_REWARD',
+  JIGSAW_REWARD: 'JIGSAW_REWARD',
+  EVENT_REWARD: 'EVENT_REWARD',
+
+  // SINK
+  STOCK_PURCHASE: 'STOCK_PURCHASE',
+  SHOP_UPGRADE: 'SHOP_UPGRADE',
+  HOUSE_PURCHASE: 'HOUSE_PURCHASE',
+  HOUSE_UPGRADE: 'HOUSE_UPGRADE',
+  FURNITURE_PURCHASE: 'FURNITURE_PURCHASE',
+  NPC_WAGE: 'NPC_WAGE',
+  FORTUNE_TELLING_FEE: 'FORTUNE_TELLING_FEE',
+  TAX: 'TAX',
+  SUU: 'SUU',
+  FINE: 'FINE',
+  GUILD_DUES: 'GUILD_DUES',
+
+  // TRANSFER
+  PLAYER_WAGE: 'PLAYER_WAGE',
+  GIFT: 'GIFT',
+  CARD_SETTLEMENT: 'CARD_SETTLEMENT',
+  THEFT: 'THEFT',
+  RESTITUTION: 'RESTITUTION',
+  COURT_COMPENSATION: 'COURT_COMPENSATION',
+
+  // SPECIAL
+  LEGACY_IMPORT: 'LEGACY_IMPORT',
+  ADMIN_ADJUSTMENT: 'ADMIN_ADJUSTMENT',
+  REVERSAL: 'REVERSAL',
+  DISGORGE_ILLICIT_GAIN: 'DISGORGE_ILLICIT_GAIN',
+  ANTI_CHEAT_FINE: 'ANTI_CHEAT_FINE',
+});
+
+/**
+ * Separate Internal Hold Lifecycle Bookkeeping Types.
+ * Strictly separate from economic transaction types.
+ */
+export const INTERNAL_HOLD_TRANSACTION_TYPES = Object.freeze({
+  HOLD_CREATE: 'hold.create',
+  HOLD_ACTIVATE: 'hold.activate',
+  HOLD_RELEASE: 'hold.release',
+  HOLD_CAPTURE: 'hold.capture',
+});
+
+/**
+ * Explicit Class Compatibility Mapping per Frozen DOCX Spec.
+ * Strictly fail-closed: each transaction type is mapped only to its frozen canonical class.
+ */
+export const TRANSACTION_TYPE_CLASS_MAP = Object.freeze({
+  // FAUCET
+  SHOP_SALE: Object.freeze(['FAUCET']),
+  WHOLESALE_SALE: Object.freeze(['FAUCET']),
+  NPC_JOB_REWARD: Object.freeze(['FAUCET']),
+  CHAPTER_REWARD: Object.freeze(['FAUCET']),
+  MINIGAME_REWARD: Object.freeze(['FAUCET']),
+  JIGSAW_REWARD: Object.freeze(['FAUCET']),
+  EVENT_REWARD: Object.freeze(['FAUCET']),
+
+  // SINK
+  STOCK_PURCHASE: Object.freeze(['SINK']),
+  SHOP_UPGRADE: Object.freeze(['SINK']),
+  HOUSE_PURCHASE: Object.freeze(['SINK']),
+  HOUSE_UPGRADE: Object.freeze(['SINK']),
+  FURNITURE_PURCHASE: Object.freeze(['SINK']),
+  NPC_WAGE: Object.freeze(['SINK']),
+  FORTUNE_TELLING_FEE: Object.freeze(['SINK']),
+  TAX: Object.freeze(['SINK']),
+  SUU: Object.freeze(['SINK']),
+  FINE: Object.freeze(['SINK']),
+  GUILD_DUES: Object.freeze(['SINK']),
+
+  // TRANSFER
+  PLAYER_WAGE: Object.freeze(['TRANSFER']),
+  GIFT: Object.freeze(['TRANSFER']),
+  CARD_SETTLEMENT: Object.freeze(['TRANSFER']),
+  THEFT: Object.freeze(['TRANSFER']),
+  RESTITUTION: Object.freeze(['TRANSFER']),
+  COURT_COMPENSATION: Object.freeze(['TRANSFER']),
+
+  // SPECIAL
+  LEGACY_IMPORT: Object.freeze(['SPECIAL']),
+  ADMIN_ADJUSTMENT: Object.freeze(['SPECIAL']),
+  REVERSAL: Object.freeze(['SPECIAL']),
+  DISGORGE_ILLICIT_GAIN: Object.freeze(['SPECIAL']),
+  ANTI_CHEAT_FINE: Object.freeze(['SPECIAL']),
+
+  // Internal Hold Bookkeeping
+  'hold.create': Object.freeze(['SPECIAL']),
+  'hold.activate': Object.freeze(['SPECIAL']),
+  'hold.release': Object.freeze(['SPECIAL']),
+  'hold.capture': Object.freeze(['SPECIAL']),
+});
+
 export const REGISTERED_TRANSACTION_TYPES = Object.freeze([
-  'faucet.grant',
-  'sink.fee',
-  'transfer.p2p',
-  'hold.create',
-  'hold.activate',
-  'hold.release',
-  'hold.capture',
+  ...Object.values(FROZEN_ECONOMIC_TRANSACTION_TYPES),
+  ...Object.values(INTERNAL_HOLD_TRANSACTION_TYPES),
 ]);
 
 export const COMMAND_TYPES = Object.freeze({
@@ -162,19 +260,41 @@ export function validateTransactionClass(txClass) {
 }
 
 /**
- * Validates transaction type against registered set.
+ * Validates transaction type against registered set and expected class.
  * @param {string} txType
+ * @param {string} [expectedClass] - Optional class constraint (FAUCET, SINK, TRANSFER, SPECIAL)
  * @returns {string} Validated transaction type
  */
-export function validateTransactionType(txType) {
+export function validateTransactionType(txType, expectedClass = null) {
   if (!txType || typeof txType !== 'string' || txType.trim() === '') {
-    throw new InvalidTransactionTypeError(txType, 'Type must be a non-empty string.');
+    throw new InvalidTransactionTypeError(txType, 'Transaction type is required and must be an explicit registered semantic type.');
   }
-  const trimmed = txType.trim().toLowerCase();
-  if (!REGISTERED_TRANSACTION_TYPES.includes(trimmed)) {
-    throw new InvalidTransactionTypeError(txType, 'Type is not registered in frozen registry.');
+
+  const trimmed = txType.trim();
+  const normalizedType = Object.values(INTERNAL_HOLD_TRANSACTION_TYPES).includes(trimmed)
+    ? trimmed
+    : trimmed.toUpperCase();
+
+  // Internal hold bookkeeping operation types cannot masquerade as economic transaction types for grant/charge/transfer
+  if (Object.values(INTERNAL_HOLD_TRANSACTION_TYPES).includes(normalizedType) && expectedClass && expectedClass !== 'SPECIAL') {
+    throw new InvalidTransactionClassError(txType, `Internal hold transaction type "${txType}" cannot be used for economic operations.`);
   }
-  return trimmed;
+
+  const allowedClasses = TRANSACTION_TYPE_CLASS_MAP[normalizedType];
+
+  if (!allowedClasses) {
+    throw new InvalidTransactionTypeError(txType, `Transaction type "${txType}" is not registered in frozen economic registry.`);
+  }
+
+  if (expectedClass) {
+    const validExpClass = validateTransactionClass(expectedClass);
+    const isCompatible = allowedClasses.includes(validExpClass);
+    if (!isCompatible) {
+      throw new InvalidTransactionClassError(txType, `Transaction type "${txType}" is incompatible with operation class "${expectedClass}".`);
+    }
+  }
+
+  return normalizedType;
 }
 
 /**
@@ -201,6 +321,8 @@ export function getDomainMetadata() {
     commandTypes: Object.values(COMMAND_TYPES),
     eventTypes: Object.values(EVENT_TYPES),
     transactionClasses: Object.values(TRANSACTION_CLASSES),
+    frozenEconomicTypes: Object.values(FROZEN_ECONOMIC_TRANSACTION_TYPES),
+    internalHoldTypes: Object.values(INTERNAL_HOLD_TRANSACTION_TYPES),
     registeredTransactionTypes: [...REGISTERED_TRANSACTION_TYPES],
     holdPurposes: Object.values(HOLD_PURPOSES),
     holdStatuses: Object.values(HOLD_STATUSES),
