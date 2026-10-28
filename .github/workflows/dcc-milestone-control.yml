@@ -49,6 +49,7 @@ jobs:
           milestone=$(jq -r '.milestone' "$state")
           status=$(jq -r '.status' "$state")
           session_id=$(jq -r '.jules_session_id // empty' "$state")
+          historical_session=$(jq -r '.recovery.historical_session // empty' "$state")
           implementation_pr=$(jq -r '.implementation_pr_number // empty' "$state")
           expected_base_branch=$(jq -r '.expected_base_branch // .starting_branch // empty' "$state")
           expected_base_sha=$(jq -r '.expected_base_sha // .expected_start_sha // empty' "$state")
@@ -57,7 +58,6 @@ jobs:
           pr_number=''
           head_sha=''
 
-          # ChatGPT is the semantic controller. Audit/hold states are intentionally inert here.
           case "$status" in
             AUDIT_REQUIRED|WAITING_PLAN_APPROVAL|PLANNING|WAITING_FOR_JULES_QUOTA|READY_FOR_PLAYTEST)
               echo "Controller state $status: no implementation CI target."
@@ -81,9 +81,11 @@ jobs:
                 head_sha=$(jq -r '.head.sha' /tmp/pr.json)
 
                 identity_match=false
-                if [[ -n "$session_id" && ( "$head_ref" == *"$session_id"* || "$body" == *"$session_id"* ) ]]; then
-                  identity_match=true
-                fi
+                for sid in "$session_id" "$historical_session"; do
+                  if [[ -n "$sid" && ( "$head_ref" == *"$sid"* || "$body" == *"$sid"* ) ]]; then
+                    identity_match=true
+                  fi
+                done
 
                 if [[ "$pr_state" == open && "$head_repo" == "$GITHUB_REPOSITORY" && "$pr_user" == huzely && \
                       "$base_ref" == "$expected_base_branch" && "$base_sha" == "$expected_base_sha" && \
@@ -173,5 +175,6 @@ jobs:
 
       - name: Mechanical result only
         run: |
-          echo 'Mechanical CI passed. This workflow MUST NOT approve a Jules plan, message Jules, mark a milestone PASS, or advance the roadmap.'
-          echo 'ChatGPT must inspect the branch/diff and frozen DOCX requirements before any semantic decision.'
+          echo 'Mechanical CI passed for the exact active PR head.'
+          echo 'This workflow MUST NOT approve a Jules plan, message Jules, mark a milestone PASS, or advance the roadmap.'
+          echo 'ChatGPT must inspect the branch/diff and both frozen DOCX documents before any semantic decision.'
