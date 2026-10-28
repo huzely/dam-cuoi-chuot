@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 12,
+  "generation": 13,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
@@ -23,9 +23,43 @@
     "reason": "Fresh retro-fix session created from the exact M3 audit baseline after the completed historical session remained terminal following a fenced send-message."
   },
   "retro_audit": {
-    "m1": {"status": "EVIDENCE_PASS_PENDING_FINAL_MATRIX", "evidence": "Exact-head CI run 40604079763 re-ran M1 unit/static and live PostgreSQL integration."},
-    "m2": {"status": "GAP", "gaps": ["Production provider verification is absent; only ProviderVerifierPort and MockProviderVerifier exist. Google/Facebook/Threads real verification and explicit Threads/Meta capability verification remain unproven."]},
-    "m3": {"status": "GAP", "gaps": ["The claimed frozen transaction registry contains only generic/internal operation types instead of the DOCX economic transaction type registry and class compatibility."], "mechanical_ci": {"run_id": 40604079763, "head_sha": "76262b174ac85bda1d6572343760737712c31c77", "status": "PASS_BEFORE_RETRO_FIX"}}
+    "m1": {
+      "status": "GAP",
+      "gaps": [
+        "Exact-head mechanical CI for the accepted M1 head f47358b73dbb99ff53be0f51b2df93ef7f4743b4 is not independently evidenced. The cited run 40604079763 is DCC Jules Command Bridge on main at ef29e2ff4d5eba00b5c992fee03f15847a08b593, not an M1 test run; PR #1's exact head has no GitHub Actions workflow runs and only CodeRabbit success.",
+        "PR #2's description reports that PostgreSQL integration failed with a sandbox IPv6 ENETUNREACH error; this is a Jules report, not successful exact-head independent TEST-database evidence.",
+        "Full M1 requirement-to-code-to-test-to-exact-head-CI matrix is still outstanding."
+      ],
+      "evidence": {
+        "accepted_head": "f47358b73dbb99ff53be0f51b2df93ef7f4743b4",
+        "mismatched_claimed_run_id": 40604079763,
+        "claimed_run_actual": "DCC Jules Command Bridge; issue_comment event; head ef29e2ff4d5eba00b5c992fee03f15847a08b593; no test jobs",
+        "prs": [
+          1,
+          2,
+          3
+        ],
+        "exact_head_ci": "NO_WORKFLOW_RUNS",
+        "current_status": "GAP"
+      }
+    },
+    "m2": {
+      "status": "GAP",
+      "gaps": [
+        "Production provider verification is absent; only ProviderVerifierPort and MockProviderVerifier exist. Google/Facebook/Threads real verification and explicit Threads/Meta capability verification remain unproven."
+      ]
+    },
+    "m3": {
+      "status": "GAP",
+      "gaps": [
+        "The claimed frozen transaction registry contains only generic/internal operation types instead of the DOCX economic transaction type registry and class compatibility."
+      ],
+      "mechanical_ci": {
+        "run_id": 40604079763,
+        "head_sha": "76262b174ac85bda1d6572343760737712c31c77",
+        "status": "PASS_BEFORE_RETRO_FIX"
+      }
+    }
   },
   "suspended_next_milestone": {
     "milestone": "M4",
@@ -38,7 +72,10 @@
     "reason": "PR #8 exists but is quarantined. Its M3 baseline will be stale after retro fixes; do not accept or continue it."
   },
   "frozen_spec": {
-    "documents": ["Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx", "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx"],
+    "documents": [
+      "Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx",
+      "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx"
+    ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
   "next_session_allowed": false,
