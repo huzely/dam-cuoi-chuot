@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 28,
+  "generation": 29,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "WAITING_PLAN",
-  "jules_session_id": "703701651756673137",
+  "status": "RECOVERY_AUTHORIZED",
+  "jules_session_id": null,
   "approved_plan_id": null,
   "pr_number": 7,
   "control_pr_number": 7,
@@ -21,9 +21,9 @@
     "first_replacement_session": "9465567810961076340",
     "first_replacement_state": "COMPLETED",
     "replacement_session": "703701651756673137",
-    "replacement_state": "CREATED_FROM_AUTHORIZED_BRANCH",
+    "replacement_state": "COMPLETED",
     "replacement_start_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
-    "reason": "Recovery 5 session 10018107605149526613 is terminal COMPLETED (Bridge status run 40650388195 and latest Supervisor run 40650405210); do not wake it. Its proposal preserves feature/exclusion rows but is incomplete: only 12 combined invariant rows instead of separate rows for Documentation §28 items 91–114 and Design §21 items 15–38; only 4 DoD rows instead of all 10 Documentation §28 bullets and 12 Design §31 items 39–50. Authorize exactly one recovery from existing PR #7 branch at exact head d0b36bf7763c868619c617593c5323d7d3294975, base branch feat/v2-m2.2-provider-linking-3617877269471098838 at 737097483495f1d650110a18788a21db62f71bba. No duplicate PR; M4 remains quarantined.",
+    "reason": "Recovery 6 session 703701651756673137 is terminal COMPLETED (Bridge status run 40657038340 and latest Supervisor run 40657064512); do not wake or approve it. Its planGenerated activity names the required matrix categories and counts, but the session returned outputs=null and no complete row-by-row matrix proposal for semantic review. Repair is still required before plan approval and M1-M3 audit. Authorize exactly one recovery from existing PR #7 branch at exact head d0b36bf7763c868619c617593c5323d7d3294975, based on feat/v2-m2.2-provider-linking-3617877269471098838 at 737097483495f1d650110a18788a21db62f71bba. Keep M4 quarantined and create no duplicate PR.",
     "single_active_session_policy": true,
     "do_not_wake_terminal_sessions": [
       "9668882045283125937",
@@ -31,22 +31,21 @@
       "11994204223709041554",
       "12132956719456106978",
       "10619766510735421970",
-      "10018107605149526613"
+      "10018107605149526613",
+      "703701651756673137"
     ],
     "pending_recovery": {
-      "authorization_generation": 27,
-      "title": "M1-M3 Retro Fix Recovery 6",
+      "authorization_generation": 29,
+      "title": "M1-M3 Retro Fix Recovery 7",
       "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
       "starting_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
       "plan_approval_required": true,
-      "reason": "Recovery 5 session 10018107605149526613 is terminal COMPLETED (Bridge status run 40650388195 and latest Supervisor run 40650405210); do not wake it. Its proposal preserves feature/exclusion rows but is incomplete: only 12 combined invariant rows instead of separate rows for Documentation §28 items 91–114 and Design §21 items 15–38; only 4 DoD rows instead of all 10 Documentation §28 bullets and 12 Design §31 items 39–50. Authorize exactly one recovery from existing PR #7 branch at exact head d0b36bf7763c868619c617593c5323d7d3294975, base branch feat/v2-m2.2-provider-linking-3617877269471098838 at 737097483495f1d650110a18788a21db62f71bba. No duplicate PR; M4 remains quarantined.",
-      "session_id": "703701651756673137",
-      "status": "SESSION_CREATED_AWAITING_PLAN",
-      "created_via_bridge_run": 40650597054,
-      "adopted_generation": 28
+      "reason": "Recovery 6 session 703701651756673137 is terminal COMPLETED (Bridge status run 40657038340 and latest Supervisor run 40657064512); do not wake or approve it. Its planGenerated activity names the required matrix categories and counts, but the session returned outputs=null and no complete row-by-row matrix proposal for semantic review. Repair is still required before plan approval and M1-M3 audit. Authorize exactly one recovery from existing PR #7 branch at exact head d0b36bf7763c868619c617593c5323d7d3294975, based on feat/v2-m2.2-provider-linking-3617877269471098838 at 737097483495f1d650110a18788a21db62f71bba. Keep M4 quarantined and create no duplicate PR.",
+      "session_id": null,
+      "status": "AUTHORIZED"
     },
-    "last_terminal_recovery_session": "10018107605149526613",
-    "active_recovery_session": "703701651756673137"
+    "last_terminal_recovery_session": "703701651756673137",
+    "active_recovery_session": null
   },
   "retro_audit": {
     "m1": {
@@ -95,7 +94,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": false,
+  "next_session_allowed": true,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -135,8 +134,8 @@
     "mechanical_ci": "PASS",
     "semantic_status": "FAIL_GAPS_REQUIRE_REPAIR",
     "accepted": false,
-    "next_action": "Recovery 6 must return complete plan and exhaustive M1-M3 matrix proposal with every invariant and DoD item on its own row. Audit against both frozen DOCX files; no implementation until explicit approval."
+    "next_action": "Recovery 7 must return the full row-by-row matrix proposal as reviewable plan output, then wait for approval; do not implement until plan is approved."
   },
-  "next_milestone": "M1-M3 Retro Fix Recovery 6",
+  "next_milestone": "M1-M3 Retro Fix Recovery 7",
   "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937"
 }
