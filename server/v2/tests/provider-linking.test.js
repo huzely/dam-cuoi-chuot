@@ -288,17 +288,16 @@ test('HttpProviderVerifier verifies Google, Facebook, Threads assertions and fai
     InvalidProviderAssertionError
   );
 
-  // 4. Threads verification
+  // 4. Threads verification querying graph.threads.net
   const threadsVerifier = new HttpProviderVerifier({
     threadsAppId: 'expected-threads-app-id',
     threadsAppAccessToken: 'valid-threads-app-token',
     fetchImpl: async (url) => {
-      if (url.includes('input_token=valid-threads-token')) {
+      assert.ok(url.includes('graph.threads.net'), 'Threads verifier must query graph.threads.net');
+      if (url.includes('access_token=valid-threads-token')) {
         return {
           ok: true,
-          json: async () => ({
-            data: { is_valid: true, app_id: 'expected-threads-app-id', user_id: 'threads-user-101' },
-          }),
+          json: async () => ({ id: 'threads-user-101', username: 'threads_user' }),
         };
       }
       return { ok: false };

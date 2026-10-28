@@ -230,48 +230,31 @@ export class HttpProviderVerifier extends ProviderVerifierPort {
       throw new InvalidProviderAssertionError('Threads verification requires configured threadsAppId.');
     }
 
-    let appAccessToken = this.threadsAppAccessToken;
-    if (!appAccessToken) {
-      if (!this.threadsAppSecret) {
-        throw new InvalidProviderAssertionError('Threads verification requires configured threadsAppSecret or threadsAppAccessToken.');
-      }
-      appAccessToken = `${encodeURIComponent(this.threadsAppId)}|${encodeURIComponent(this.threadsAppSecret)}`;
-    }
-
     let response;
     try {
-      response = await this.fetchImpl(`https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(authToken)}&access_token=${appAccessToken}`);
+      response = await this.fetchImpl(`https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(authToken)}`);
     } catch (err) {
-      throw new InvalidProviderAssertionError(`Threads debug_token request failed: ${err.message}`);
+      throw new InvalidProviderAssertionError(`Threads API request failed: ${err.message}`);
     }
 
     if (!response || !response.ok) {
-      throw new InvalidProviderAssertionError('Threads token verification request failed.');
+      throw new InvalidProviderAssertionError('Threads token verification request failed or token is invalid.');
     }
 
-    let result;
+    let payload;
     try {
-      result = await response.json();
+      payload = await response.json();
     } catch (err) {
-      throw new InvalidProviderAssertionError('Failed to parse Threads debug_token response.');
+      throw new InvalidProviderAssertionError('Failed to parse Threads API response.');
     }
 
-    const data = result?.data;
-    if (!data || !data.is_valid) {
-      throw new InvalidProviderAssertionError('Threads access token is invalid or expired.');
-    }
-
-    if (String(data.app_id) !== String(this.threadsAppId)) {
-      throw new InvalidProviderAssertionError(`Threads token app_id mismatch: expected "${this.threadsAppId}", got "${data.app_id}".`);
-    }
-
-    if (!data.user_id) {
-      throw new InvalidProviderAssertionError('Threads debug_token response missing user_id.');
+    if (!payload || !payload.id) {
+      throw new InvalidProviderAssertionError('Threads token verification failed: missing user id.');
     }
 
     return {
       provider: 'THREADS',
-      providerSubject: validateProviderSubject(String(data.user_id)),
+      providerSubject: validateProviderSubject(String(payload.id)),
     };
   }
 }
