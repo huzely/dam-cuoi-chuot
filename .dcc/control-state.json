@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 17,
+  "generation": 18,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
@@ -74,6 +74,8 @@
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
   "next_session_allowed": true,
+  "next_milestone": "M1-M3 Retro Fix Recovery 2",
+  "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
