@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 39,
+  "generation": 40,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "WAITING_PLAN_APPROVAL",
+  "status": "WAITING_RECOVERY_SESSION",
   "jules_session_id": "9445771863876317298",
   "approved_plan_id": null,
   "pr_number": 7,
@@ -20,10 +20,10 @@
     "historical_session": "9668882045283125937",
     "first_replacement_session": "9465567810961076340",
     "first_replacement_state": "COMPLETED",
-    "replacement_session": "9445771863876317298",
-    "replacement_state": "ACTIVE_PLAN_REVIEW",
+    "replacement_session": null,
+    "replacement_state": "TERMINAL_INVALID_PLAN",
     "replacement_start_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
-    "reason": "Recovery 11 session 9445771863876317298 created by Bridge run 40687792795 under generation 38 and adopted as sole active session at generation 39. Recovery 10 11341023579517942837 is terminal and protected; PR #7 unchanged at d0b36bf... / base 737097...; M4 remains quarantined.",
+    "reason": "Recovery 11 9445771863876317298 is terminal COMPLETED with outputs=null (Bridge status run 40695726154; Supervisor run 40695752049). It emitted only planGenerated activity 40b7dc5f044044099a59c8cb82a4d52e and no implementation. Matrix 6468988860 has 122 rows but is not approvable: Design §21 IDs 15–27 and 30–37 are paraphrased instead of verbatim; SOURCE_QUOTE_GAP on feature/DoD rows leaves required traceability unresolved. This audit used both frozen DOCX. A same-session correction is impossible under the terminal-session fence; authorize exactly one replacement from unchanged PR #7 branch/head. Keep M4 quarantined; no duplicate PR.",
     "single_active_session_policy": true,
     "do_not_wake_terminal_sessions": [
       "9668882045283125937",
@@ -36,22 +36,23 @@
       "2975213977259876849",
       "13047123435375062634",
       "848983161116916375",
-      "11341023579517942837"
+      "11341023579517942837",
+      "9445771863876317298"
     ],
     "pending_recovery": {
-      "authorization_generation": 38,
-      "title": "M1-M3 Retro Fix Recovery 11",
+      "authorization_generation": 40,
+      "title": "M1-M3 Retro Fix Recovery 12",
       "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
       "starting_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
       "plan_approval_required": true,
-      "reason": "Recovery 10 is terminal COMPLETED with outputs=null after planGenerated only; same-session continuation is impossible under the terminal-session fence. Its matrix remains non-verbatim and incomplete semantically. Continue the same PR #7 repair on the exact same branch/head/base; no duplicate PR or code until approval.",
-      "session_id": "9445771863876317298",
-      "status": "CREATED_AWAITING_ADOPTION",
-      "created_via_bridge_run": 40687792795,
-      "adopted_generation": 39
+      "reason": "Recovery 11 terminal COMPLETED with outputs=null after planGenerated only; cannot be messaged or resumed. Its matrix paraphrases frozen quotes. This replacement is authorized only because same-session continuation is impossible, and continues existing PR #7 at the exact same head/base.",
+      "session_id": null,
+      "status": "AUTHORIZED_AWAITING_CREATION",
+      "created_via_bridge_run": null,
+      "adopted_generation": null
     },
-    "last_terminal_recovery_session": "11341023579517942837",
-    "active_recovery_session": "9445771863876317298",
+    "last_terminal_recovery_session": "9445771863876317298",
+    "active_recovery_session": null,
     "last_terminal_recovery_state": "COMPLETED_PLAN_INVALID_OUTPUTS_NULL",
     "plan_audit": {
       "state": "REJECTED_NEEDS_CORRECTION",
@@ -118,7 +119,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": false,
+  "next_session_allowed": true,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -160,6 +161,6 @@
     "accepted": false,
     "next_action": "Recovery 9 must return an approvable, exact-source 122-row M1-M3 matrix proposal. Correct section citations to Documentation §§19/15/5/17/24 and Design §§20/19/3/4/21/31 as applicable; quote frozen source text verbatim; keep exclusions GAP until exact code absence audit. No code until plan approval."
   },
-  "next_milestone": "M1-M3 Retro Fix Recovery 11",
+  "next_milestone": "M1-M3 Retro Fix Recovery 12",
   "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937"
 }
