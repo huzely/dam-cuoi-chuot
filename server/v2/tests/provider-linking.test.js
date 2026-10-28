@@ -289,16 +289,27 @@ test('HttpProviderVerifier verifies Google, Facebook, Threads assertions and fai
   );
 
   // 4. Threads verification querying graph.threads.net
+  let verifiedUrl = null;
   const threadsVerifier = new HttpProviderVerifier({
     threadsAppId: 'expected-threads-app-id',
     threadsAppAccessToken: 'valid-threads-app-token',
     fetchImpl: async (url) => {
-      assert.ok(url.includes('graph.threads.net'), 'Threads verifier must query graph.threads.net');
+      verifiedUrl = url;
+      assert.ok(url.includes('https://graph.threads.net/v1.0/me'), 'Threads verifier must query https://graph.threads.net/v1.0/me');
       if (url.includes('access_token=valid-threads-token')) {
         return {
           ok: true,
           json: async () => ({ id: 'threads-user-101', username: 'threads_user' }),
         };
+      }
+      if (url.includes('access_token=non-2xx-token')) {
+        return { ok: false, status: 401 };
+      }
+      if (url.includes('access_token=malformed-json-token')) {
+        return { ok: true, json: async () => { throw new Error('invalid json'); } };
+      }
+      if (url.includes('access_token=missing-id-token')) {
+        return { ok: true, json: async () => ({ username: 'no_id_user' }) };
       }
       return { ok: false };
     },
@@ -307,4 +318,42 @@ test('HttpProviderVerifier verifies Google, Facebook, Threads assertions and fai
   const validThreads = await threadsVerifier.verifyAssertion({ provider: 'THREADS', assertionToken: 'valid-threads-token' });
   assert.equal(validThreads.provider, 'THREADS');
   assert.equal(validThreads.providerSubject, 'threads-user-101');
+  assert.ok(verifiedUrl.startsWith('https://graph.threads.net/v1.0/me?fields=id,username&access_token=valid-threads-token'));
+
+  // Fail-closed cases for Threads
+  await assert.rejects(
+    threadsVerifier.verifyAssertion({ provider: 'THREADS', assertionToken: 'non-2xx-token' }),
+    InvalidProviderAssertionError
+  );
+  await assert.rejects(
+    threadsVerifier.verifyAssertion({ provider: 'THREADS', assertionToken: 'malformed-json-token' }),
+    InvalidProviderAssertionError
+  );
+  await assert.rejects(
+    threadsVerifier.verifyAssertion({ provider: 'THREADS', assertionToken: 'missing-id-token' }),
+    InvalidProviderAssertionError
+  );
+});
+
+test('HttpProviderVerifier network exception handling sanitizes sensitive tokens from error messages', async () => {
+  const SENSITIVE_TOKEN = 'secret-user-token-xyz-12345';
+
+  const throwingVerifier = new HttpProviderVerifier({
+    googleClientId: 'google-client-id',
+    facebookAppId: 'facebook-app-id',
+    threadsAppId: 'threads-app-id',
+    fetchImpl: async () => {
+      throw new Error(`Connection timeout for URL with token=${SENSITIVE_TOKEN}`);
+    },
+  });
+
+  for (const provider of ['GOOGLE', 'FACEBOOK', 'THREADS']) {
+    try {
+      await throwingVerifier.verifyAssertion({ provider, assertionToken: SENSITIVE_TOKEN });
+      assert.fail(`Expected verifier to throw for provider ${provider}`);
+    } catch (err) {
+      assert.ok(err instanceof InvalidProviderAssertionError);
+      assert.equal(err.message.includes(SENSITIVE_TOKEN), false, `Exception message for ${provider} must NOT contain sensitive token`);
+    }
+  }
 });

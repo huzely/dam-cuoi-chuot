@@ -236,7 +236,16 @@ export function validateEconomicTransactionType(type, expectedClass = null) {
 
   if (expectedClass) {
     const normalizedExpectedClass = validateTransactionClass(expectedClass);
-    if (spec.class !== normalizedExpectedClass) {
+
+    // ANTI_CHEAT_FINE is canonically SPECIAL class, but explicitly compatible with SINK as well per design spec §4.5
+    if (upper === 'ANTI_CHEAT_FINE') {
+      if (normalizedExpectedClass !== TRANSACTION_CLASSES.SPECIAL && normalizedExpectedClass !== TRANSACTION_CLASSES.SINK) {
+        throw new InvalidTransactionTypeError(
+          type,
+          `Transaction type "${upper}" is compatible with SPECIAL and SINK classes, but got "${normalizedExpectedClass}".`
+        );
+      }
+    } else if (spec.class !== normalizedExpectedClass) {
       throw new InvalidTransactionTypeError(
         type,
         `Transaction type "${upper}" has registered class "${spec.class}", which is incompatible with requested class "${normalizedExpectedClass}".`

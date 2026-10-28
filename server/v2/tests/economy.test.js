@@ -84,10 +84,12 @@ test('M3 Economy Domain: Fail-Closed Frozen Economic Transaction Registry Valida
   assert.equal(validateEconomicTransactionType('SHOP_UPGRADE', 'SINK'), 'SHOP_UPGRADE');
   assert.equal(validateEconomicTransactionType('PLAYER_WAGE', 'TRANSFER'), 'PLAYER_WAGE');
   assert.equal(validateEconomicTransactionType('ANTI_CHEAT_FINE', 'SPECIAL'), 'ANTI_CHEAT_FINE');
+  assert.equal(validateEconomicTransactionType('ANTI_CHEAT_FINE', 'SINK'), 'ANTI_CHEAT_FINE');
   assert.equal(validateEconomicTransactionType('hold.activate', 'SPECIAL'), 'hold.activate');
 
-  // Strict Class Enforcement (ANTI_CHEAT_FINE is strictly SPECIAL class, not SINK)
-  assert.throws(() => validateEconomicTransactionType('ANTI_CHEAT_FINE', 'SINK'), InvalidTransactionTypeError);
+  // Class Enforcement & Dual Compatibility Rules
+  assert.throws(() => validateEconomicTransactionType('ANTI_CHEAT_FINE', 'FAUCET'), InvalidTransactionTypeError);
+  assert.throws(() => validateEconomicTransactionType('ANTI_CHEAT_FINE', 'TRANSFER'), InvalidTransactionTypeError);
   assert.throws(() => validateEconomicTransactionType('CHAPTER_REWARD', 'SINK'), InvalidTransactionTypeError);
   assert.throws(() => validateEconomicTransactionType('SHOP_UPGRADE', 'FAUCET'), InvalidTransactionTypeError);
   assert.throws(() => validateEconomicTransactionType('PLAYER_WAGE', 'SINK'), InvalidTransactionTypeError);
