@@ -7,9 +7,12 @@ const statePath = process.env.DCC_STATE_PATH || '.dcc/control-state.json';
 
 if (!repo || !ghToken) throw new Error('GITHUB_REPOSITORY and GITHUB_TOKEN are required');
 
+const withTimeout = (ms = 20000) => AbortSignal.timeout(ms);
+
 const gh = async (path, options = {}) => {
   const res = await fetch(`https://api.github.com/repos/${repo}${path}`, {
     ...options,
+    signal: options.signal || withTimeout(),
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${ghToken}`,
@@ -25,6 +28,7 @@ const gh = async (path, options = {}) => {
 const jules = async (path) => {
   if (!julesKey) return null;
   const res = await fetch(`https://jules.googleapis.com/v1alpha${path}`, {
+    signal: withTimeout(),
     headers: { 'x-goog-api-key': julesKey },
   });
   if (!res.ok) throw new Error(`Jules GET ${path}: ${res.status} ${await res.text()}`);
@@ -42,15 +46,7 @@ let pr = null;
 if (prNumber) pr = await gh(`/pulls/${prNumber}`);
 
 let session = null;
-let activities = null;
-if (sessionId && julesKey) {
-  session = await jules(`/sessions/${sessionId}`);
-  try {
-    activities = await jules(`/sessions/${sessionId}/activities?pageSize=100`);
-  } catch (error) {
-    console.warn(`Could not read Jules activities: ${error.message}`);
-  }
-}
+if (sessionId && julesKey) session = await jules(`/sessions/${sessionId}`);
 
 const runs = await gh('/actions/runs?per_page=50');
 const mechanicalRuns = (runs.workflow_runs || []).filter((r) => r.name === 'DCC Mechanical Verification');
@@ -129,27 +125,13 @@ if (process.env.GITHUB_STEP_SUMMARY) {
     `- Checkpoint: **${state.status}**`,
     `- Jules: **${julesState}** (${sessionId || 'none'})`,
     `- PR: **#${prNumber || 'none'}** @ \`${pr?.head?.sha || 'none'}\``,
+    `- Checkpoint candidate: \`${candidateHead || 'none'}\``,
+    `- Head drift: **${headDrift}**`,
     `- Exact-head CI: **${ci.state}**${ci.runId ? ` (run ${ci.runId})` : ''}`,
+    `- Latest bridge: **${latestBridge?.status || 'none'} / ${latestBridge?.conclusion || 'none'}**`,
     `- Controller attention: **${attention}**`,
+    '',
+    'The supervisor is intentionally read-only toward Jules and checkpoint state. Its only automatic mutation is dispatching missing exact-head TEST CI. Semantic plan/code decisions remain with ChatGPT.',
   ];
   await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
-}
-
-// Write one deduplicated heartbeat per meaningful state/head transition. This is evidence only;
-// it never approves a plan, marks PASS, advances a milestone, or mutates Jules.
-if (prNumber && !terminal) {
-  const marker = `<!-- dcc-supervisor:${generation}:${pr?.head?.sha || 'none'}:${julesState}:${ci.state}:${attention} -->`;
-  const comments = await gh(`/issues/${prNumber}/comments?per_page=100`);
-  if (!comments.some((c) => (c.body || '').includes(marker))) {
-    const body = [
-      marker,
-      `DCC Supervisor heartbeat — generation ${generation}; milestone ${milestone}; Jules ${julesState}; head \`${pr?.head?.sha || 'none'}\`; exact-head CI ${ci.state}; attention ${attention}.`,
-      'Mechanical observation only. ChatGPT remains the semantic PASS authority.',
-    ].join('\n');
-    await gh(`/issues/${prNumber}/comments`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body }),
-    });
-  }
 }
