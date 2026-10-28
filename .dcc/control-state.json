@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 45,
+  "generation": 46,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "WAITING_PLAN_APPROVAL",
+  "status": "IN_PROGRESS",
   "jules_session_id": "17428010912306933625",
-  "approved_plan_id": null,
+  "approved_plan_id": "e91965b49d1542b3999d5fc15d1ee496",
   "pr_number": 7,
   "control_pr_number": 7,
   "implementation_pr_number": 7,
@@ -56,32 +56,29 @@
     "active_recovery_session": "17428010912306933625",
     "last_terminal_recovery_state": "COMPLETED_PLAN_ONLY_OUTPUTS_NULL",
     "plan_audit": {
-      "state": "NOT_APPROVED_TERMINAL_NO_MATRIX_OUTPUT",
-      "session_id": "10987024922384397097",
-      "bridge_run_id": 40706045923,
-      "activity_id": "226340988f0e447d8bde286cd98aa386",
-      "findings": [
-        "Plan outline specifies the 122-row scope, verbatim source quotes, required per-row fields and evidence GAPs, with no code edits before approval.",
-        "The actual 122-row matrix is absent: Jules session is COMPLETED with outputs=null and its only activity is planGenerated. Exact quotes, citations, classifications and exclusions therefore cannot be semantically verified or approved.",
-        "Terminal session cannot accept a correction or approval; replacement is authorized only after this terminal-state audit."
-      ],
+      "state": "APPROVED_MATRIX_ONLY_PLAN",
+      "session_id": "17428010912306933625",
+      "plan_id": "e91965b49d1542b3999d5fc15d1ee496",
+      "bridge_run_id": 40708671132,
       "audited_against": [
         "Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx §§5,15,17,19,24,28",
-        "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx §§3,4,19,20,21,26,28,31"
+        "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx §§3,4,19,20,21,26.2,31"
       ],
-      "plan_approved": false
+      "findings": [
+        "Exact feature source mapping is explicit: M1 Documentation §19 + Design §20, QTV Documentation §17 + Design §19; M2 Documentation §15 + Design §3; M3 Documentation §5 + Design §4.",
+        "Exclusions cite Documentation §24 and Design §26.2 only; invariants and DoD are separate rows with correct IDs/counts.",
+        "Plan preserves exact-language quotations, per-row applicability/rationale and code/test/SHA/CI evidence fields, with M1/M2/PR #7 semantics left GAP and no unsupported PASS.",
+        "Matrix-only phase forbids code/repository edits and tests and requires the full 122-row output before further controller approval."
+      ],
+      "plan_approved": true,
+      "approval_authorizes": "Generate and present matrix only. No code edits or commits are authorized."
     },
     "current_session_observation": {
       "session_id": "17428010912306933625",
       "status": "AWAITING_PLAN_APPROVAL",
-      "outputs": null,
-      "latest_plan_activity_id": "ff8876f63a0d485daa4190e698b96d53",
-      "latest_plan_activity_time": "2026-10-28T14:37:27Z",
-      "correction1_comment_id": 6471916630,
-      "correction1_bridge_run_id": 40707709251,
-      "correction2_comment_id": 6472011566,
-      "correction2_bridge_run_id": 40708377818,
-      "action": "Correction sent to same non-terminal session; awaiting revised plan/matrix. No code changes authorized."
+      "latest_plan_id": "e91965b49d1542b3999d5fc15d1ee496",
+      "latest_plan_activity_id": "06a87a40871c409fbec0c565f7e7b6fd",
+      "approval_action": "Approved matrix-only plan after semantic audit; explicit code-edit prohibition retained."
     }
   },
   "retro_audit": {
