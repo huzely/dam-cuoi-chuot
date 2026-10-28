@@ -7,11 +7,12 @@ import {
   TRANSACTION_CLASSES,
   HOLD_PURPOSES,
   HOLD_STATUSES,
-  REGISTERED_TRANSACTION_TYPES,
+  FROZEN_ECONOMIC_TRANSACTION_TYPES,
+  INTERNAL_HOLD_BOOKKEEPING_TYPES,
   validateIntegerDong,
   formatQuanDisplay,
   validateTransactionClass,
-  validateTransactionType,
+  validateEconomicTransactionType,
   validateHoldPurpose,
   getDomainMetadata,
   InsufficientBalanceError,
@@ -35,7 +36,8 @@ test('M3 Economy Domain: Constants and Telemetry Metadata', () => {
   assert.ok(meta.commandTypes.includes('economy.grant_faucet'));
   assert.ok(meta.eventTypes.includes('economy.transfer_completed'));
   assert.ok(meta.transactionClasses.includes('FAUCET'));
-  assert.ok(meta.registeredTransactionTypes.includes('faucet.grant'));
+  assert.ok(meta.frozenEconomicTypes.includes('CHAPTER_REWARD'));
+  assert.ok(meta.internalBookkeepingTypes.includes('hold.activate'));
   assert.ok(meta.holdPurposes.includes('CARD_MATCH'));
   assert.ok(meta.holdStatuses.includes('CREATED'));
 });
@@ -69,7 +71,7 @@ test('M3 Economy Domain: Pure Quan Display Formatting (600 đồng = 1 quan)', (
   assert.equal(formatQuanDisplay('1805'), '3 quan 5 đồng');
 });
 
-test('M3 Economy Domain: Fail-Closed Registry Validators', () => {
+test('M3 Economy Domain: Fail-Closed Frozen Economic Transaction Registry Validators', () => {
   // Transaction Classes
   assert.equal(validateTransactionClass('FAUCET'), 'FAUCET');
   assert.equal(validateTransactionClass('sink'), 'SINK');
@@ -77,10 +79,19 @@ test('M3 Economy Domain: Fail-Closed Registry Validators', () => {
   assert.equal(validateTransactionClass('special'), 'SPECIAL');
   assert.throws(() => validateTransactionClass('UNAPPROVED_CLASS'), InvalidTransactionClassError);
 
-  // Transaction Types
-  assert.equal(validateTransactionType('faucet.grant'), 'faucet.grant');
-  assert.equal(validateTransactionType('transfer.p2p'), 'transfer.p2p');
-  assert.throws(() => validateTransactionType('unregistered.custom_type'), InvalidTransactionTypeError);
+  // Valid Frozen Economic Types
+  assert.equal(validateEconomicTransactionType('CHAPTER_REWARD', 'FAUCET'), 'CHAPTER_REWARD');
+  assert.equal(validateEconomicTransactionType('SHOP_UPGRADE', 'SINK'), 'SHOP_UPGRADE');
+  assert.equal(validateEconomicTransactionType('PLAYER_WAGE', 'TRANSFER'), 'PLAYER_WAGE');
+  assert.equal(validateEconomicTransactionType('hold.activate', 'SPECIAL'), 'hold.activate');
+
+  // Incompatible Class Rejection
+  assert.throws(() => validateEconomicTransactionType('CHAPTER_REWARD', 'SINK'), InvalidTransactionTypeError);
+  assert.throws(() => validateEconomicTransactionType('SHOP_UPGRADE', 'FAUCET'), InvalidTransactionTypeError);
+  assert.throws(() => validateEconomicTransactionType('PLAYER_WAGE', 'SINK'), InvalidTransactionTypeError);
+
+  // Unknown Economic Type Rejection
+  assert.throws(() => validateEconomicTransactionType('UNREGISTERED_CUSTOM_TYPE'), InvalidTransactionTypeError);
 
   // Hold Purposes
   assert.equal(validateHoldPurpose('CARD_MATCH'), 'CARD_MATCH');

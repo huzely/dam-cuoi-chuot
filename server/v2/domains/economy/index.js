@@ -44,10 +44,51 @@ export const HOLD_STATUSES = Object.freeze({
   CAPTURED: 'CAPTURED',
 });
 
-export const REGISTERED_TRANSACTION_TYPES = Object.freeze([
-  'faucet.grant',
-  'sink.fee',
-  'transfer.p2p',
+/**
+ * Authoritative Frozen Economic Transaction Registry mapping every approved economic
+ * mutation type to its compatible transaction class (FAUCET, SINK, TRANSFER).
+ */
+export const FROZEN_ECONOMIC_TRANSACTION_TYPES = Object.freeze({
+  // FAUCET Class (authoritative money grant/credit)
+  SHOP_SALE: { type: 'SHOP_SALE', class: 'FAUCET' },
+  WHOLESALE_SALE: { type: 'WHOLESALE_SALE', class: 'FAUCET' },
+  NPC_JOB_REWARD: { type: 'NPC_JOB_REWARD', class: 'FAUCET' },
+  CHAPTER_REWARD: { type: 'CHAPTER_REWARD', class: 'FAUCET' },
+  MINIGAME_REWARD: { type: 'MINIGAME_REWARD', class: 'FAUCET' },
+  JIGSAW_REWARD: { type: 'JIGSAW_REWARD', class: 'FAUCET' },
+  EVENT_REWARD: { type: 'EVENT_REWARD', class: 'FAUCET' },
+  RESTITUTION: { type: 'RESTITUTION', class: 'FAUCET' },
+  COURT_COMPENSATION: { type: 'COURT_COMPENSATION', class: 'FAUCET' },
+  LEGACY_IMPORT: { type: 'LEGACY_IMPORT', class: 'FAUCET' },
+  ADMIN_ADJUSTMENT: { type: 'ADMIN_ADJUSTMENT', class: 'FAUCET' },
+  REVERSAL: { type: 'REVERSAL', class: 'FAUCET' },
+
+  // SINK Class (authoritative money charge/debit)
+  STOCK_PURCHASE: { type: 'STOCK_PURCHASE', class: 'SINK' },
+  SHOP_UPGRADE: { type: 'SHOP_UPGRADE', class: 'SINK' },
+  HOUSE_PURCHASE: { type: 'HOUSE_PURCHASE', class: 'SINK' },
+  HOUSE_UPGRADE: { type: 'HOUSE_UPGRADE', class: 'SINK' },
+  FURNITURE_PURCHASE: { type: 'FURNITURE_PURCHASE', class: 'SINK' },
+  NPC_WAGE: { type: 'NPC_WAGE', class: 'SINK' },
+  FORTUNE_TELLING_FEE: { type: 'FORTUNE_TELLING_FEE', class: 'SINK' },
+  TAX: { type: 'TAX', class: 'SINK' },
+  SUU: { type: 'SUU', class: 'SINK' },
+  FINE: { type: 'FINE', class: 'SINK' },
+  GUILD_DUES: { type: 'GUILD_DUES', class: 'SINK' },
+  DISGORGE_ILLICIT_GAIN: { type: 'DISGORGE_ILLICIT_GAIN', class: 'SINK' },
+  ANTI_CHEAT_FINE: { type: 'ANTI_CHEAT_FINE', class: 'SINK' },
+
+  // TRANSFER Class (peer-to-peer / account-to-account value conservation)
+  PLAYER_WAGE: { type: 'PLAYER_WAGE', class: 'TRANSFER' },
+  GIFT: { type: 'GIFT', class: 'TRANSFER' },
+  CARD_SETTLEMENT: { type: 'CARD_SETTLEMENT', class: 'TRANSFER' },
+  THEFT: { type: 'THEFT', class: 'TRANSFER' },
+});
+
+/**
+ * Separate Internal Hold Lifecycle Bookkeeping Types (NOT generic economic mutations).
+ */
+export const INTERNAL_HOLD_BOOKKEEPING_TYPES = Object.freeze([
   'hold.create',
   'hold.activate',
   'hold.release',
@@ -162,19 +203,55 @@ export function validateTransactionClass(txClass) {
 }
 
 /**
- * Validates transaction type against registered set.
+ * Validates an economic transaction type against the frozen economic registry
+ * and verifies class compatibility.
+ *
+ * @param {string} type
+ * @param {string} [expectedClass=null] - Expected class ('FAUCET', 'SINK', 'TRANSFER', 'SPECIAL')
+ * @returns {string} Validated transaction type string
+ */
+export function validateEconomicTransactionType(type, expectedClass = null) {
+  if (!type || typeof type !== 'string' || type.trim() === '') {
+    throw new InvalidTransactionTypeError(type, 'Type must be a non-empty string.');
+  }
+
+  const trimmed = type.trim();
+  const lower = trimmed.toLowerCase();
+  const upper = trimmed.toUpperCase();
+
+  // Allow internal hold bookkeeping types if expectedClass is SPECIAL or not specified
+  if (INTERNAL_HOLD_BOOKKEEPING_TYPES.includes(lower)) {
+    if (expectedClass && expectedClass.toUpperCase() !== 'SPECIAL') {
+      throw new InvalidTransactionTypeError(type, `Internal hold bookkeeping type "${type}" is incompatible with transaction class "${expectedClass}".`);
+    }
+    return lower;
+  }
+
+  const spec = FROZEN_ECONOMIC_TRANSACTION_TYPES[upper];
+  if (!spec) {
+    throw new InvalidTransactionTypeError(type, `Transaction type "${type}" is not registered in frozen economic transaction registry.`);
+  }
+
+  if (expectedClass) {
+    const normalizedExpectedClass = validateTransactionClass(expectedClass);
+    if (spec.class !== normalizedExpectedClass) {
+      throw new InvalidTransactionTypeError(
+        type,
+        `Transaction type "${upper}" has registered class "${spec.class}", which is incompatible with requested class "${normalizedExpectedClass}".`
+      );
+    }
+  }
+
+  return upper;
+}
+
+/**
+ * Legacy validator maintained for backwards compatibility.
  * @param {string} txType
- * @returns {string} Validated transaction type
+ * @returns {string}
  */
 export function validateTransactionType(txType) {
-  if (!txType || typeof txType !== 'string' || txType.trim() === '') {
-    throw new InvalidTransactionTypeError(txType, 'Type must be a non-empty string.');
-  }
-  const trimmed = txType.trim().toLowerCase();
-  if (!REGISTERED_TRANSACTION_TYPES.includes(trimmed)) {
-    throw new InvalidTransactionTypeError(txType, 'Type is not registered in frozen registry.');
-  }
-  return trimmed;
+  return validateEconomicTransactionType(txType);
 }
 
 /**
@@ -201,7 +278,8 @@ export function getDomainMetadata() {
     commandTypes: Object.values(COMMAND_TYPES),
     eventTypes: Object.values(EVENT_TYPES),
     transactionClasses: Object.values(TRANSACTION_CLASSES),
-    registeredTransactionTypes: [...REGISTERED_TRANSACTION_TYPES],
+    frozenEconomicTypes: Object.keys(FROZEN_ECONOMIC_TRANSACTION_TYPES),
+    internalBookkeepingTypes: [...INTERNAL_HOLD_BOOKKEEPING_TYPES],
     holdPurposes: Object.values(HOLD_PURPOSES),
     holdStatuses: Object.values(HOLD_STATUSES),
     requiredFlags: [...REQUIRED_FEATURE_FLAGS],

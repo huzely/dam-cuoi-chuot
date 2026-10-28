@@ -11,6 +11,7 @@ import {
   InvalidAccountStateError,
   InvalidProviderAssertionError,
   MockProviderVerifier,
+  HttpProviderVerifier,
   handleLinkProviderIdentityCommand,
   validateAndNormalizeProvider,
 } from '../domains/identity/index.js';
@@ -204,4 +205,92 @@ test('M2.2 maps PostgreSQL 23505 only for the exact provider identity constraint
     otherService.linkProviderIdentity({ userId: otherAccount.userId, provider: 'GOOGLE', providerSubject: 'race-b' }),
     (err) => err.code === '23505' && err.constraint === 'some_other_unique_constraint' && !(err instanceof DuplicateProviderIdentityError)
   );
+});
+
+test('HttpProviderVerifier verifies Google, Facebook, Threads assertions and fails closed on invalid credentials', async () => {
+  // 1. Missing configured client IDs fails closed
+  const unconfiguredVerifier = new HttpProviderVerifier({
+    fetchImpl: async () => ({ ok: true, json: async () => ({}) }),
+  });
+  await assert.rejects(
+    unconfiguredVerifier.verifyAssertion({ provider: 'GOOGLE', assertionToken: 'tok123' }),
+    InvalidProviderAssertionError
+  );
+
+  // 2. Google verification success and audience mismatch rejection
+  const googleVerifier = new HttpProviderVerifier({
+    googleClientId: 'expected-google-client-id',
+    fetchImpl: async (url) => {
+      if (url.includes('id_token=valid-google-token')) {
+        return {
+          ok: true,
+          json: async () => ({
+            aud: 'expected-google-client-id',
+            iss: 'https://accounts.google.com',
+            sub: 'google-user-sub-123',
+          }),
+        };
+      }
+      if (url.includes('id_token=wrong-aud-token')) {
+        return {
+          ok: true,
+          json: async () => ({
+            aud: 'forged-client-id',
+            iss: 'https://accounts.google.com',
+            sub: 'google-user-sub-456',
+          }),
+        };
+      }
+      return { ok: false };
+    },
+  });
+
+  const validGoogle = await googleVerifier.verifyAssertion({ provider: 'GOOGLE', assertionToken: 'valid-google-token' });
+  assert.equal(validGoogle.provider, 'GOOGLE');
+  assert.equal(validGoogle.providerSubject, 'google-user-sub-123');
+
+  await assert.rejects(
+    googleVerifier.verifyAssertion({ provider: 'GOOGLE', assertionToken: 'wrong-aud-token' }),
+    InvalidProviderAssertionError
+  );
+
+  // 3. Facebook verification success and app_id mismatch rejection
+  const facebookVerifier = new HttpProviderVerifier({
+    facebookAppId: 'expected-fb-app-id',
+    fetchImpl: async (url) => {
+      if (url.includes('input_token=valid-fb-token')) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: { is_valid: true, app_id: 'expected-fb-app-id', user_id: 'fb-user-789' },
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({ data: { is_valid: false } }) };
+    },
+  });
+
+  const validFb = await facebookVerifier.verifyAssertion({ provider: 'FACEBOOK', assertionToken: 'valid-fb-token' });
+  assert.equal(validFb.provider, 'FACEBOOK');
+  assert.equal(validFb.providerSubject, 'fb-user-789');
+
+  await assert.rejects(
+    facebookVerifier.verifyAssertion({ provider: 'FACEBOOK', assertionToken: 'invalid-fb-token' }),
+    InvalidProviderAssertionError
+  );
+
+  // 4. Threads verification
+  const threadsVerifier = new HttpProviderVerifier({
+    threadsAppId: 'expected-threads-app-id',
+    fetchImpl: async (url) => {
+      if (url.includes('graph.threads.net') && url.includes('valid-threads-token')) {
+        return { ok: true, json: async () => ({ id: 'threads-user-101' }) };
+      }
+      return { ok: false };
+    },
+  });
+
+  const validThreads = await threadsVerifier.verifyAssertion({ provider: 'THREADS', assertionToken: 'valid-threads-token' });
+  assert.equal(validThreads.provider, 'THREADS');
+  assert.equal(validThreads.providerSubject, 'threads-user-101');
 });
