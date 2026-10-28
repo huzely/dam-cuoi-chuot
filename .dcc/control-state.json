@@ -36,7 +36,7 @@
     "pending_recovery": {
       "authorization_generation": 27,
       "title": "M1-M3 Retro Fix Recovery 6",
-      "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098837",
+      "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
       "starting_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
       "plan_approval_required": true,
       "reason": "Recovery 5 session 10018107605149526613 is terminal COMPLETED (Bridge status run 40650388195 and latest Supervisor run 40650405210); do not wake it. Its proposal preserves feature/exclusion rows but is incomplete: only 12 combined invariant rows instead of separate rows for Documentation §28 items 91–114 and Design §21 items 15–38; only 4 DoD rows instead of all 10 Documentation §28 bullets and 12 Design §31 items 39–50. Authorize exactly one recovery from existing PR #7 branch at exact head d0b36bf7763c868619c617593c5323d7d3294975, base branch feat/v2-m2.2-provider-linking-3617877269471098838 at 737097483495f1d650110a18788a21db62f71bba. No duplicate PR; M4 remains quarantined.",
@@ -136,5 +136,5 @@
     "next_action": "Recovery 5 is terminal and its proposal omits required invariant/DoD rows; Recovery 6 must return a complete plan and exhaustive matrix proposal on existing PR #7. Do not implement until approved."
   },
   "next_milestone": "M1-M3 Retro Fix Recovery 6",
-  "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098837"
+  "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937"
 }
