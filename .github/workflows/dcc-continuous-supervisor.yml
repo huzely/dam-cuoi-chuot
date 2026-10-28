@@ -1,0 +1,57 @@
+name: DCC Continuous Supervisor
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.dcc/**'
+      - '.github/workflows/dcc-*.yml'
+  schedule:
+    - cron: '3/5 * * * *'
+  workflow_run:
+    workflows:
+      - DCC Jules Command Bridge
+      - DCC Mechanical Verification
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: dcc-continuous-supervisor-${{ github.repository }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+  issues: write
+
+jobs:
+  supervise:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout controller files from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          sparse-checkout: |
+            .dcc/control-state.json
+            .dcc/supervisor.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Observe Jules, PR and every DCC workflow; repair missing exact-head CI
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+        run: node .dcc/supervisor.mjs
+
+      - name: Guardrail
+        run: |
+          echo 'Supervisor is mechanical orchestration only.'
+          echo 'It may observe Jules/GitHub and dispatch missing exact-head CI.'
+          echo 'It must never approve a Jules plan, declare semantic PASS, advance milestones, or touch production.'
