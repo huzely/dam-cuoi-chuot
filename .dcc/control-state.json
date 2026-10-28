@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 14,
+  "generation": 15,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
@@ -46,18 +46,21 @@
     "m2": {
       "status": "GAP",
       "gaps": [
-        "Production provider verification is absent; only ProviderVerifierPort and MockProviderVerifier exist. Google/Facebook/Threads real verification and explicit Threads/Meta capability verification remain unproven."
+        "M2 production provider verification remains unproven on exact candidate head 2b07f7c11c09b70de5cf8910753d3db2900a0620: verifier errors interpolate err.message (possible token-bearing URL leakage); Google tokeninfo path lacks explicit expiry claim validation in application code; Threads /debug_token app-bound capability lacks authoritative Meta evidence and is mock-only.",
+        "Complete account/linking matrix and exact-head independent CI are still outstanding."
       ]
     },
     "m3": {
       "status": "GAP",
       "gaps": [
-        "The claimed frozen transaction registry contains only generic/internal operation types instead of the DOCX economic transaction type registry and class compatibility."
+        "Candidate registry has 29 unique DOCX economic types, but ANTI_CHEAT_FINE is registered only as SPECIAL and the explicitly allowed SINK compatibility is absent.",
+        "Tests sample a few types rather than exhaustively checking all 29 type/class pairs and incompatible class rejection; matrix and exact-head CI are outstanding."
       ],
       "mechanical_ci": {
-        "run_id": 40604079763,
-        "head_sha": "76262b174ac85bda1d6572343760737712c31c77",
-        "status": "PASS_BEFORE_RETRO_FIX"
+        "run_id": 40614954637,
+        "head_sha": "2b07f7c11c09b70de5cf8910753d3db2900a0620",
+        "status": "SKIPPED_EXACT_HEAD_CI",
+        "reason": "Resolver marked candidate inactive under stale expected_base_branch/SHA and implementation_pr_number=null; no test jobs ran."
       }
     }
   },
@@ -102,5 +105,23 @@
     "plan_approval_required": true,
     "freeze_m4_until_retro_audit_pass": true,
     "unproven_frozen_spec_requirement_is_gap": true
+  },
+  "candidate_audit": {
+    "pr_number": 7,
+    "head_sha": "2b07f7c11c09b70de5cf8910753d3db2900a0620",
+    "base_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
+    "base_sha": "737097483495f1d650110a18788a21db62f71bba",
+    "ancestry": "PASS",
+    "semantic_status": "GAP",
+    "findings": [
+      "provider-verifier.js does not exist in candidate diff; concrete implementation is in server/v2/domains/identity/verifier.js.",
+      "Google verification uses tokeninfo but code does not explicitly enforce exp/nbf; network exception interpolates err.message.",
+      "Facebook and Threads network exceptions interpolate err.message; credential values are placed in request URL.",
+      "Threads app-bound debug_token capability is not proven by authoritative Meta documentation; current test is a mock.",
+      "FROZEN_ECONOMIC_TRANSACTION_TYPES marks ANTI_CHEAT_FINE SPECIAL only, omitting allowed SINK compatibility.",
+      "economy.test.js samples only a few type/class pairs; no exhaustive registry acceptance matrix."
+    ],
+    "plan_status": "WAITING_FOR_CORRECTION",
+    "accepted": false
   }
 }
