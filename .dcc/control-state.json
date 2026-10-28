@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 32,
+  "generation": 33,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
@@ -23,7 +23,7 @@
     "replacement_session": "13047123435375062634",
     "replacement_state": "SESSION_CREATED_AWAITING_PLAN",
     "replacement_start_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
-    "reason": "Recovery 7 session 2975213977259876849 is terminal COMPLETED and fenced. Recovery 8 session 13047123435375062634 was created through the generation-31 command bridge from the same existing PR #7 branch/head d0b36bf7763c868619c617593c5323d7d3294975 and is now the sole active Jules session. Plan approval is required; no code changes are authorized until the actual row-by-row matrix plan is reviewed.",
+    "reason": "Recovery 8 remains the sole active session. Its first full-matrix comment (6465421186) was semantically incorrect: Documentation §28 invariant IDs and Design §21 invariant IDs were assigned mismatched meanings, and Design §31 DoD 39-50 were replaced by unrelated claims. A precise correction was sent in the same nonterminal session (comment 6465464345; Bridge run 40664949247). Await corrected matrix, no code changes authorized.",
     "single_active_session_policy": true,
     "do_not_wake_terminal_sessions": [
       "9668882045283125937",
@@ -49,7 +49,24 @@
     },
     "last_terminal_recovery_session": "2975213977259876849",
     "active_recovery_session": "13047123435375062634",
-    "last_terminal_recovery_state": "COMPLETED_NO_REVIEWABLE_MATRIX"
+    "last_terminal_recovery_state": "COMPLETED_NO_REVIEWABLE_MATRIX",
+    "plan_audit": {
+      "state": "REJECTED_NEEDS_CORRECTION",
+      "proposal_comment_id": 6465421186,
+      "audited_against": [
+        "Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx §28",
+        "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx §21, §31"
+      ],
+      "findings": [
+        "Documentation §28 invariant rows 92-108 are mapped to different/invented source meanings; every frozen ID 91-114 must use its exact text.",
+        "Design §21 invariant rows 17-38 are mis-mapped; use each exact frozen ID 15-38 separately.",
+        "Design §31 DoD rows 39-50 are not the actual DoD items; rows 42-50 were replaced by unrelated exclusions/security claims.",
+        "All rows need verbatim source wording and explicit applicability/classification with rationale; current table does not satisfy this."
+      ],
+      "correction_comment_id": 6465464345,
+      "correction_bridge_run_id": 40664949247,
+      "plan_approved": false
+    }
   },
   "retro_audit": {
     "m1": {
@@ -138,7 +155,7 @@
     "mechanical_ci": "PASS",
     "semantic_status": "FAIL_GAPS_REQUIRE_REPAIR",
     "accepted": false,
-    "next_action": "Recovery 8 is the sole active session. Inspect its actual matrix plan against both frozen DOCX files; approve only if complete and accurate. No code edits until approval."
+    "next_action": "Recovery 8 is still the sole active session. Its first 122-row matrix proposal was rejected at generation 32 due frozen-source ID/text mismatches; precise same-session correction was sent (comment 6465464345). Wait for corrected plan and re-audit both DOCX files; do not approve or allow code changes yet."
   },
   "next_milestone": "M1-M3 Retro Fix Recovery 8",
   "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937"
