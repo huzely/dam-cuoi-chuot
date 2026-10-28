@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 21,
+  "generation": 22,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "RECOVERY_AUTHORIZED",
-  "jules_session_id": "11994204223709041554",
+  "status": "WAITING_PLAN",
+  "jules_session_id": "12132956719456106978",
   "approved_plan_id": null,
   "pr_number": 7,
   "control_pr_number": 7,
@@ -20,9 +20,9 @@
     "historical_session": "9668882045283125937",
     "first_replacement_session": "9465567810961076340",
     "first_replacement_state": "COMPLETED",
-    "replacement_session": "11994204223709041554",
-    "replacement_state": "COMPLETED",
-    "replacement_start_sha": "6ace37dff18807f03615ecc221f5e061901ec093",
+    "replacement_session": "12132956719456106978",
+    "replacement_state": "CREATED_FROM_AUTHORIZED_BRANCH",
+    "replacement_start_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
     "reason": "Supervisor generation 19 confirmed a proven head drift to 6ace37dff18807f03615ecc221f5e061901ec093 and terminal recovery session 9465567810961076340. Exactly one authorized Recovery 2 session was created via command bridge run 40621158730; checkpoint now adopts it as the sole active session. Terminal sessions remain fenced.",
     "single_active_session_policy": true,
     "do_not_wake_terminal_sessions": [
@@ -36,7 +36,10 @@
       "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
       "starting_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
       "plan_approval_required": true,
-      "reason": "Recovery 2 (11994204223709041554) is terminal COMPLETED without plan approval and pushed an unapproved head. Its latest plan remains incomplete: it does not supply the full requirement matrix as a reviewable artifact, and Threads /me only proves an accepted token/subject while app binding for configured threadsAppId is not established. Continue on the existing PR #7/branch from the exact current head; no duplicate PR."
+      "reason": "Recovery 2 (11994204223709041554) is terminal COMPLETED without plan approval and pushed an unapproved head. Its latest plan remains incomplete: it does not supply the full requirement matrix as a reviewable artifact, and Threads /me only proves an accepted token/subject while app binding for configured threadsAppId is not established. Continue on the existing PR #7/branch from the exact current head; no duplicate PR.",
+      "session_id": "12132956719456106978",
+      "status": "SESSION_CREATED_AWAITING_PLAN",
+      "created_via_bridge_run": 40627317888
     }
   },
   "retro_audit": {
@@ -86,7 +89,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": true,
+  "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -127,7 +130,5 @@
     "semantic_status": "FAIL_GAPS_REQUIRE_REPAIR",
     "accepted": false,
     "next_action": "Recovery 3 must submit a corrected plan and complete M1-M3 requirement matrix; implement only after approval on existing PR #7."
-  },
-  "next_milestone": "M1-M3 Retro Fix Recovery 3",
-  "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937"
+  }
 }
