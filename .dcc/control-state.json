@@ -1,6 +1,7 @@
 {
-  "schema_version": 2,
-  "generation": 8,
+  "schema_version": 3,
+  "architecture_version": "chatgpt-jules-github-v1",
+  "generation": 9,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_AUDIT",
   "milestone_title": "Frozen-spec retrospective audit — M1 through M3",
@@ -27,20 +28,26 @@
     "session_id": "4853011554120262538",
     "status_at_freeze": "WAITING_PLAN_APPROVAL",
     "implementation_started": false,
-    "reason": "M1-M3 must be re-audited against both frozen DOCX design documents before roadmap progression. Do not approve or implement M4 until audit closure."
+    "reason": "M1-M3 must pass the two frozen DOCX files before M4 plan approval or implementation."
   },
-  "audit_scope": {
+  "frozen_spec": {
     "documents": [
       "Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx",
       "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx"
     ],
+    "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
+  },
+  "audit_scope": {
     "milestones": ["M1", "M2", "M3"],
-    "requirement": "Build a traceable requirement-to-code/test/CI matrix for all M1-M3 requirements plus applicable cross-cutting invariants and Definition of Done. Any unproven requirement is GAP, not PASS. Repair gaps before resuming M4."
+    "requirement": "Build requirement -> code -> test -> exact-head CI evidence for all applicable frozen-spec requirements, invariants and Definition of Done. Unproven means GAP. Repair gaps before M4."
   },
   "live_head_source": "frozen_at_m3_accepted_head",
   "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
+    "semantic_controller": "chatgpt",
+    "implementation_worker": "jules",
+    "evidence_plane": "github",
     "transition_mode": "compare_and_swap",
     "command_bus": "github_pr_issue_comments",
     "command_bus_pr_number": 7,
@@ -48,20 +55,17 @@
     "require_generation_fence": true,
     "require_deterministic_command_key": true
   },
-  "roles": {
-    "jules": "implementation_worker",
-    "github": "mechanical_control_loop",
-    "work": "long_running_operator",
-    "chatgpt": "semantic_auditor_controller"
-  },
   "rules": {
+    "chatgpt_only_semantic_pass_authority": true,
+    "jules_final_report_is_not_evidence": true,
+    "github_ci_is_mechanical_only": true,
+    "inspect_every_jules_branch_head": true,
     "reuse_current_session_until_pass": true,
     "reuse_current_pr_until_pass": true,
     "production_allowed": false,
     "production_db_allowed": false,
     "semantic_pass_required_after_ci": true,
     "plan_approval_required": true,
-    "do_not_treat_control_pr_as_implementation_pr": true,
     "freeze_m4_until_retro_audit_pass": true,
     "unproven_frozen_spec_requirement_is_gap": true
   }
