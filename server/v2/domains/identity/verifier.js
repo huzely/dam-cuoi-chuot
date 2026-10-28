@@ -139,8 +139,8 @@ export class HttpProviderVerifier extends ProviderVerifierPort {
     let response;
     try {
       response = await this.fetchImpl(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
-    } catch (err) {
-      throw new InvalidProviderAssertionError(`Google tokeninfo request failed: ${err.message}`);
+    } catch (_err) {
+      throw new InvalidProviderAssertionError('Google tokeninfo network request failed.');
     }
 
     if (!response || !response.ok) {
@@ -150,7 +150,7 @@ export class HttpProviderVerifier extends ProviderVerifierPort {
     let payload;
     try {
       payload = await response.json();
-    } catch (err) {
+    } catch (_err) {
       throw new InvalidProviderAssertionError('Failed to parse Google tokeninfo response.');
     }
 
@@ -191,8 +191,8 @@ export class HttpProviderVerifier extends ProviderVerifierPort {
     let response;
     try {
       response = await this.fetchImpl(`https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(authToken)}&access_token=${appAccessToken}`);
-    } catch (err) {
-      throw new InvalidProviderAssertionError(`Facebook debug_token request failed: ${err.message}`);
+    } catch (_err) {
+      throw new InvalidProviderAssertionError('Facebook debug_token network request failed.');
     }
 
     if (!response || !response.ok) {
@@ -202,7 +202,7 @@ export class HttpProviderVerifier extends ProviderVerifierPort {
     let result;
     try {
       result = await response.json();
-    } catch (err) {
+    } catch (_err) {
       throw new InvalidProviderAssertionError('Failed to parse Facebook debug_token response.');
     }
 
@@ -233,8 +233,8 @@ export class HttpProviderVerifier extends ProviderVerifierPort {
     let response;
     try {
       response = await this.fetchImpl(`https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(authToken)}`);
-    } catch (err) {
-      throw new InvalidProviderAssertionError(`Threads API request failed: ${err.message}`);
+    } catch (_err) {
+      throw new InvalidProviderAssertionError('Threads API network request failed.');
     }
 
     if (!response || !response.ok) {
@@ -244,7 +244,7 @@ export class HttpProviderVerifier extends ProviderVerifierPort {
     let payload;
     try {
       payload = await response.json();
-    } catch (err) {
+    } catch (_err) {
       throw new InvalidProviderAssertionError('Failed to parse Threads API response.');
     }
 

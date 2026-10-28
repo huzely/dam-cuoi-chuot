@@ -236,6 +236,10 @@ export function validateEconomicTransactionType(type, expectedClass = null) {
 
   if (expectedClass) {
     const normalizedExpectedClass = validateTransactionClass(expectedClass);
+    // ANTI_CHEAT_FINE explicitly permits SPECIAL or SINK class per §4.5
+    if (upper === 'ANTI_CHEAT_FINE' && (normalizedExpectedClass === 'SPECIAL' || normalizedExpectedClass === 'SINK')) {
+      return upper;
+    }
     if (spec.class !== normalizedExpectedClass) {
       throw new InvalidTransactionTypeError(
         type,
