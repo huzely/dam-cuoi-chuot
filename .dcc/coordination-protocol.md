@@ -1,108 +1,109 @@
-# DCC Multi-Agent Coordination Protocol
+# DCC ChatGPT ↔ Jules ↔ GitHub Automation Protocol
 
-This file defines the control-plane contract for ChatGPT, Work, GitHub Actions, and Jules.
+This is the authoritative operating contract for autonomous development of `huzely/dam-cuoi-chuot`.
 
-## Single source of truth
+## 1. Authority and roles
 
-- Always read `main:.dcc/control-state.json` immediately before taking any control action.
-- `generation` is a fencing token. Never act using a stale generation.
-- The live PR head is always read from GitHub PR metadata. Do not cache it in conversation state.
-- Milestone transitions update `control-state.json` using compare-and-swap semantics: fetch the current blob SHA, verify the expected generation, then replace the file. A stale write must fail rather than overwrite a newer checkpoint.
+### Frozen product authority
+The two owner-approved DOCX files are the product/design authority:
+- `Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx`
+- `Dam_Cuoi_Chuot_V2_Full_Game_Design.docx`
 
-## Roles
+ChatGPT must read the relevant milestone requirements from BOTH files before writing a Jules prompt, approving a plan, accepting code, or declaring PASS. GitHub CI or a Jules Final Report can never override the frozen DOCX requirements.
 
-- Jules: implementation worker. It edits code and updates the active PR. It does not decide milestone PASS or create duplicate sessions/PRs.
-- GitHub Actions: mechanical control loop. It serializes control operations, validates the active checkpoint, runs exact-head CI, and sends narrowly scoped mechanical failure/resume feedback.
-- Work: long-running operator. It reads this protocol and the current checkpoint, inspects GitHub/Jules through connectors or the GitHub bridge, and performs only actions allowed by the active generation.
-- ChatGPT watchdog/controller: semantic auditor. It validates acceptance criteria, architecture/security/spec alignment, decides FAIL/PASS, and authorizes milestone transitions.
+### ChatGPT — controller, architect, semantic auditor
+ChatGPT is the only component allowed to make semantic decisions. ChatGPT:
+1. Reads the DOCX plan/spec and current `.dcc/control-state.json`.
+2. Writes the exact milestone prompt for Jules.
+3. Reads Jules responses and activities.
+4. If Jules returns a plan, audits it against BOTH DOCX files; approve only when correct, otherwise send a precise correction in the SAME session.
+5. If Jules returns a Final Report, determine what actually happened. A report is not evidence that code exists.
+6. Inspect GitHub branches/PRs/commits/diffs directly. If Jules created or updated a branch, ChatGPT must inspect that exact branch/head.
+7. Identify code defects precisely: file/function/logic/requirement/test/architecture/security/migration issue, then send a precise fix prompt to the SAME Jules session and existing PR/branch.
+8. After code audit passes, require exact-head CI and then perform final semantic/DoD audit against BOTH DOCX files.
+9. Only ChatGPT may mark a milestone PASS and authorize/create the next Jules session.
 
-## Work transport rules
+### Jules — implementation worker
+Jules plans and codes. Jules does not decide milestone PASS. One milestone uses one Jules session until PASS. Corrections stay in that same session and existing implementation branch/PR. A new Jules session is created only for the next milestone after ChatGPT accepts the previous milestone.
 
-- Work must use the connected GitHub tools for repository, PR, commit, CI, workflow, and checkpoint access.
-- Work must use the DCC Jules Command Bridge or another explicitly supported connector/API path for Jules control.
-- Work must not depend on Cloud Browser for GitHub or Jules. Cloud Browser is fallback-only for tasks that truly require a website UI.
-- A Cloud Browser connection failure must not pause, invalidate, or reset the DCC checkpoint.
-- If Work itself pauses or resumes, it must re-read `control-state.json`, this protocol, the active PR head, and current Jules state before taking any action.
+### GitHub — evidence and mechanical verification
+GitHub is the evidence plane: branches, commits, PRs, diffs, reviews, and CI. GitHub Actions may run mechanical exact-head tests but MUST NOT approve Jules plans, send generic semantic corrections, declare PASS, or advance milestones.
 
-## Serialization and idempotency
+### Watchdog
+The scheduled ChatGPT watchdog is only a continuity/fallback trigger for the same ChatGPT controller loop. It is not a separate semantic authority.
 
-All control workflows share one GitHub concurrency group and must use `cancel-in-progress: false`. This prevents simultaneous control mutations.
+## 2. Source of truth and fencing
 
-Every mutating `/dcc-jules` command must include:
+- `.dcc/control-state.json` is the runtime checkpoint.
+- `generation` is the fencing token. Re-read the checkpoint immediately before every mutating control action.
+- Never act on a stale generation, stale Jules session, stale PR, or stale head SHA.
+- The frozen DOCX files define WHAT must be built; the checkpoint defines WHERE the controller currently is.
 
-- `generation`: the exact current `control-state.json` generation.
-- `command_key`: a deterministic idempotency key.
+## 3. Milestone loop
 
-Recommended command key format:
+For milestone `Mx`:
 
-`g<generation>:<milestone>:pr<pr>:<head-or-base>:<action>:<reason>`
+1. **Read spec** — ChatGPT extracts Mx scope, invariants, exclusions, acceptance criteria and Definition of Done from BOTH DOCX files.
+2. **Prompt Jules** — create exactly one Jules session from the exact accepted head of the previous milestone, with plan approval required.
+3. **Plan gate** — when Jules returns a plan, ChatGPT audits it. If wrong/incomplete, send a precise correction to the SAME session. If correct, approve it.
+4. **Final Report gate** — when Jules reports completion/final report, ChatGPT classifies it:
+   - plan/report only, no implementation: tell the SAME session to implement;
+   - implementation claimed: verify GitHub evidence;
+   - blocker/question: answer/correct within scope;
+   - quota/rate limit: checkpoint `WAITING_FOR_JULES_QUOTA`, do not duplicate.
+5. **Branch/code audit** — discover the branch/PR Jules actually created. Verify session identity, base branch, exact base SHA and ancestry. Inspect changed files/diff and relevant full files. Do not trust the Final Report as evidence.
+6. **Correction loop** — if code is wrong, identify exact defects and send a precise fix prompt to the SAME Jules session/branch/PR. Re-audit every new head. Repeat until code audit passes.
+7. **Mechanical CI** — verify the exact accepted candidate SHA with unit/static tests, PostgreSQL TEST integration, repeatability/regression as applicable. Never use production.
+8. **Final semantic gate** — ChatGPT rechecks code + tests + CI + BOTH DOCX + invariants + DoD. CI green alone is not PASS.
+9. **PASS transition** — record accepted head and CI evidence, increment generation, then create exactly one new Jules session for Mx+1 from that exact accepted head. Do not wait for the owner between milestones.
+10. After M22 + full regression/integration + semantic PASS, set `READY_FOR_PLAYTEST` and STOP. Production/M23 is owner-controlled.
 
-Examples:
+## 4. Jules response rules
 
-`g1:M2.2:pr6:76704c27:send-message:semantic-fix-1`
+### Plan
+Never mechanically approve. Audit against both DOCX files first.
 
-`g2:M2.3:pr7:<sha>:approve-plan:approved-plan-1`
+### Final Report
+Never equate Final Report with completion. Inspect GitHub to prove whether implementation exists and whether it is correct.
 
-The command bridge must reject stale generations and suppress an earlier duplicate `command_key` on the same PR.
+### IN_PROGRESS
+If Jules is actively working and no blocker exists, do not interrupt.
 
-## Active milestone rules
+### COMPLETED without implementation
+Resume the SAME session with a deterministic correction telling Jules to implement and update the expected branch/PR.
 
-1. Exactly one Jules session and one active implementation PR are authoritative for a milestone once that implementation PR exists. Before it exists, the checkpoint must explicitly remain in a no-implementation-PR phase and any older PR used only as a command bus must never count as implementation evidence.
-2. If Jules is `IN_PROGRESS` and there is no confirmed blocker, do not send messages.
-3. Every new implementation PR head must be verified independently on that exact SHA.
-4. A failed CI/audit correction goes to the same Jules session and existing implementation PR.
-5. A milestone is not PASS merely because Jules reports completion or CI is green. Semantic acceptance must also pass.
-6. No next Jules session may be created while `next_session_allowed` is false.
-7. On confirmed quota/rate limit, checkpoint as waiting and retry later; never create a duplicate session.
-8. A Jules session reporting `COMPLETED` before producing the required implementation PR/commits is not milestone completion. Resume the same session with a deterministic command key.
+### Failed implementation
+Send precise findings, not `please fix`. A correction should name the affected file/function/behavior, the violated DOCX requirement/invariant, expected behavior, and required tests.
 
-## Milestone transition protocol
+## 5. Branch and PR rules
 
-A controller may transition only after independently verifying the exact active head and all acceptance criteria.
-
-1. Re-read `control-state.json` and PR metadata.
-2. Verify generation/session/PR/head have not changed underneath the audit.
-3. Update the checkpoint with compare-and-swap, increment `generation`, record the accepted head/CI evidence, and set `next_session_allowed=true`, `next_milestone`, `next_starting_branch`, and exact next starting SHA.
-4. Only after the new generation is visible may one `create-session` command be issued for the next milestone using a deterministic `command_key` for that generation.
-5. Other agents observing the new generation abandon any pending action created from the previous generation.
-6. After the next session is established, update the checkpoint again with compare-and-swap, make that new milestone authoritative, and set `next_session_allowed=false`.
-7. A checkpoint that says the current milestone is PASS while the next roadmap session has not yet been created is an incomplete transition, not an idle/terminal state. The controller/watchdog must finish the handoff in the same control run whenever Jules quota and owner-independent permissions allow.
-8. Do not wait for the owner to say “continue” between milestones. Continue automatically until an owner-only blocker is genuinely unavoidable or the project reaches `READY_FOR_PLAYTEST`.
-
-## Continuous roadmap progression
-
-After semantic + exact-head CI PASS, advance in this frozen order without skipping milestones:
-
-- M3 — Wallet V2 + Ledger + Holds
-- M4 — Progress/Unlock Compatibility
-- M5 — Legacy Migration Engine
-- M6 — Chapter IV Economy Conversion
-- M7 — Profile + Gia sản + Danh phận + Danh vọng
-- M8 — World Map + NPC Framework + Thầy Bói
-- M9 — House V2
-- M10 — Employment + Chợ Việc
-- M11 — Sưu 10.5% + Công quỹ
-- M12 — Chapter IX / Hội Xuân Framework
-- M13 — 4 Folk Minigames
-- M14 — Shared Card Platform
-- M15 — Tiến Lên + Sâm + Ba Cây
-- M16 — Social + Sổ Làng
-- M17 — Theft + Evidence + Court
-- M18 — Seasonal 20/11
-- M19 — Audio V2 + QTV BGM
-- M20 — Telemetry + Economy Balancing
-- M21 — Anti-Cheat Hardening
-- M22 — Migration Rehearsal + Staging
-
-For each milestone: new Jules session, exact accepted previous head as starting baseline, plan approval before implementation, one implementation PR, independent exact-head CI, semantic audit, then immediate handoff to the next milestone. Never create the next milestone early and never leave a passed milestone sitting without beginning the authorized handoff.
-
-M23 / production cutover is not autonomous. After M22 and full regression/integration PASS, checkpoint `READY_FOR_PLAYTEST` and stop for the owner; do not deploy or mutate production.
-
-## Safety invariants
-
-- Never use production or a production database for autonomous verification.
-- Never reveal secrets in comments, logs, prompts, or repository files.
+- If Jules creates a new branch/PR, ChatGPT discovers and inspects it automatically.
+- Accept it only when it belongs to the active Jules session and descends from the exact expected baseline.
+- Duplicate/stale/wrong-base branches are not accepted as milestone evidence.
 - Never force-push protected branches.
-- Never weaken tests/security/spec requirements merely to make CI pass.
-- Never perform destructive migrations or production deployment autonomously.
-- Stop at `READY_FOR_PLAYTEST` after full regression/integration PASS.
+- Keep corrections on the same active implementation branch/PR unless recovery is technically unavoidable and independently preflighted.
+
+## 6. PASS equation
+
+A milestone may PASS only when all are true:
+
+`DOCX scope + approved plan + correct implementation + branch/diff audit + required tests + exact-head CI + invariants + Definition of Done + semantic audit`
+
+Jules Final Report alone = NOT PASS.
+CI green alone = NOT PASS.
+PR mergeable alone = NOT PASS.
+
+## 7. Transport and automation
+
+- `.github/workflows/dcc-jules-command-bridge.yml` is only a fenced transport for ChatGPT commands to Jules and explicit exact-head verification requests.
+- `.github/workflows/dcc-milestone-control.yml` is mechanical PR/head CI only. It must not make semantic decisions or message Jules with generic fixes.
+- The legacy unfenced `dcc-jules-bridge.yml` is forbidden/removed because it bypasses the checkpoint controller.
+- Neutral stale/duplicate commands must not be treated as project failures.
+
+## 8. Safety
+
+- TEST database only for autonomous verification; never production.
+- Never expose secrets in prompts/comments/logs/repo files.
+- Never weaken tests/spec/security to obtain green CI.
+- No destructive production migration/deploy autonomously.
+- Owner involvement is required only for a genuine frozen-spec conflict, destructive/security/production decision, or after `READY_FOR_PLAYTEST`.
