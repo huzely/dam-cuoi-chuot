@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 22,
+  "generation": 23,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "WAITING_PLAN",
+  "status": "RECOVERY_AUTHORIZED",
   "jules_session_id": "12132956719456106978",
   "approved_plan_id": null,
   "pr_number": 7,
@@ -21,48 +21,46 @@
     "first_replacement_session": "9465567810961076340",
     "first_replacement_state": "COMPLETED",
     "replacement_session": "12132956719456106978",
-    "replacement_state": "CREATED_FROM_AUTHORIZED_BRANCH",
+    "replacement_state": "COMPLETED",
     "replacement_start_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
     "reason": "Supervisor generation 19 confirmed a proven head drift to 6ace37dff18807f03615ecc221f5e061901ec093 and terminal recovery session 9465567810961076340. Exactly one authorized Recovery 2 session was created via command bridge run 40621158730; checkpoint now adopts it as the sole active session. Terminal sessions remain fenced.",
     "single_active_session_policy": true,
     "do_not_wake_terminal_sessions": [
       "9668882045283125937",
       "9465567810961076340",
-      "11994204223709041554"
+      "11994204223709041554",
+      "12132956719456106978"
     ],
     "pending_recovery": {
-      "authorization_generation": 21,
-      "title": "M1-M3 Retro Fix Recovery 3",
+      "authorization_generation": 23,
+      "title": "M1-M3 Retro Fix Recovery 4",
       "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
       "starting_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
       "plan_approval_required": true,
-      "reason": "Recovery 2 (11994204223709041554) is terminal COMPLETED without plan approval and pushed an unapproved head. Its latest plan remains incomplete: it does not supply the full requirement matrix as a reviewable artifact, and Threads /me only proves an accepted token/subject while app binding for configured threadsAppId is not established. Continue on the existing PR #7/branch from the exact current head; no duplicate PR.",
-      "session_id": "12132956719456106978",
-      "status": "SESSION_CREATED_AWAITING_PLAN",
-      "created_via_bridge_run": 40627317888
+      "reason": "Recovery 3 (12132956719456106978) is terminal COMPLETED with no new commit. Its plan/matrix is not acceptable: it marks M1 rows PASS using exact-head CI for PR #7 at d0b36bf instead of accepted M1 head f47358b, omits required M1-M3 frozen requirements/invariants/DoD rows, and claims verifier secret-leak safety without sentinel tests. Continue only on PR #7 branch from exact current head; no duplicate PR."
     }
   },
   "retro_audit": {
     "m1": {
       "status": "GAP",
       "gaps": [
-        "Exact-head mechanical CI for the accepted M1 head f47358b73dbb99ff53be0f51b2df93ef7f4743b4 is not independently evidenced.",
-        "PR #2's historical PostgreSQL integration report was not successful exact-head independent TEST-database evidence.",
-        "Full M1 requirement-to-code-to-test-to-exact-head-CI matrix is still outstanding."
+        "Exact-head test CI for accepted M1 head f47358b73dbb99ff53be0f51b2df93ef7f4743b4 is absent; run 40604079763 was Command Bridge and cannot evidence M1 tests.",
+        "The submitted matrix uses PR #7 run 40622093897 to mark M1 requirements PASS, although that run's exact tested head is d0b36bf7763c868619c617593c5323d7d3294975; the matrix must preserve those M1 rows as GAP absent head-specific evidence.",
+        "The M1 requirement/invariant/exclusion/DoD traceability matrix is incomplete."
       ]
     },
     "m2": {
       "status": "GAP",
       "gaps": [
-        "M2 provider/linking frozen-spec matrix remains outstanding.",
-        "Threads verifier at d0b36bf uses graph.threads.net /v1.0/me and returns subject id, but configured threadsAppId is only checked for presence and is not used to prove app binding; current official Threads docs must define exactly what the endpoint/debug capability proves. Any unsupported cross-app claim stays GAP/fail-closed.",
-        "Provider exception handling now uses static network errors, but sentinel tests proving user/app tokens cannot appear in exception messages/logs are not present in provider-linking.test.js."
+        "M2 provider/linking requirement matrix is incomplete.",
+        "Threads `/v1.0/me` returns an endpoint-accepted user subject but does not prove app binding; `threadsAppId` is not used for proof. Keep app binding GAP unless documented capability and response semantics prove it.",
+        "Static network error sanitization is present, but no sentinel test currently proves user/app tokens and client secrets cannot appear in errors/stacks; the matrix incorrectly marked this PASS."
       ]
     },
     "m3": {
       "status": "GAP",
       "gaps": [
-        "Full M1-M3 requirement-to-code-to-test-to-exact-head-CI matrix remains outstanding."
+        "M3 requirement/invariant/DoD matrix is incomplete; report does not map every authoritative money-flow, wallet concurrency, ledger durability/idempotency, hold transition/double-action and transaction-registry requirement to exact code, named tests, exact-head CI, and status."
       ],
       "mechanical_ci": {
         "run_id": 40622093897,
@@ -89,7 +87,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": false,
+  "next_session_allowed": true,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -129,6 +127,8 @@
     "mechanical_ci": "PASS",
     "semantic_status": "FAIL_GAPS_REQUIRE_REPAIR",
     "accepted": false,
-    "next_action": "Recovery 3 must submit a corrected plan and complete M1-M3 requirement matrix; implement only after approval on existing PR #7."
-  }
+    "next_action": "Recovery 4 must supply a corrected plan and exhaustive matrix proposal; do not implement until approved. Re-audit the same PR #7 branch afterward."
+  },
+  "next_milestone": "M1-M3 Retro Fix Recovery 4",
+  "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937"
 }
