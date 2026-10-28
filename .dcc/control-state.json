@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 13,
+  "generation": 14,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
@@ -10,11 +10,11 @@
   "approved_plan_id": null,
   "pr_number": 7,
   "control_pr_number": 7,
-  "implementation_pr_number": null,
+  "implementation_pr_number": 7,
   "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
   "expected_start_sha": "76262b174ac85bda1d6572343760737712c31c77",
-  "expected_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
-  "expected_base_sha": "76262b174ac85bda1d6572343760737712c31c77",
+  "expected_base_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
+  "expected_base_sha": "737097483495f1d650110a18788a21db62f71bba",
   "audit_baseline_head_sha": "76262b174ac85bda1d6572343760737712c31c77",
   "recovery": {
     "historical_session": "9668882045283125937",
