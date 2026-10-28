@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 33,
+  "generation": 34,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "WAITING_PLAN",
+  "status": "WAITING_RECOVERY_SESSION",
   "jules_session_id": "13047123435375062634",
   "approved_plan_id": null,
   "pr_number": 7,
@@ -20,10 +20,10 @@
     "historical_session": "9668882045283125937",
     "first_replacement_session": "9465567810961076340",
     "first_replacement_state": "COMPLETED",
-    "replacement_session": "13047123435375062634",
-    "replacement_state": "SESSION_CREATED_AWAITING_PLAN",
+    "replacement_session": null,
+    "replacement_state": "TERMINAL_MATRIX_STILL_INVALID",
     "replacement_start_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
-    "reason": "Recovery 8 remains the sole active session. Its first full-matrix comment (6465421186) was semantically incorrect: Documentation §28 invariant IDs and Design §21 invariant IDs were assigned mismatched meanings, and Design §31 DoD 39-50 were replaced by unrelated claims. A precise correction was sent in the same nonterminal session (comment 6465464345; Bridge run 40664949247). Await corrected matrix, no code changes authorized.",
+    "reason": "Recovery 8 session 13047123435375062634 is terminal COMPLETED with outputs=null (fresh Bridge status run 40672217885 and latest Supervisor run 40672241899); do not wake or approve it. Its corrected matrix comment 6465537210 still mis-cites the frozen docs: M1 uses Documentation §20.1 (actually Documentation §20 is Telemetry & Economy Balancing) and Design §19 (Admin/QTV); M2 uses Documentation §25.1 (Master Plan) and Design §20 (Technical Architecture) instead of account/identity sources; M3 uses Documentation §26.1 (Agent Rules) instead of §5 Economy V2. It also paraphrases frozen invariant/DoD text rather than quoting it, planGenerated count says 111 while required full matrix is 122 rows, and marks exclusions verified absent without exact code audit. Repair remains required before approval or M1-M3 audit. Authorize exactly one replacement from the existing PR #7 branch at exact head d0b36bf7763c868619c617593c5323d7d3294975, base feat/v2-m2.2-provider-linking-3617877269471098838 at SHA 737097483495f1d650110a18788a21db62f71bba. Keep M4 quarantined and do not create a duplicate PR.",
     "single_active_session_policy": true,
     "do_not_wake_terminal_sessions": [
       "9668882045283125937",
@@ -33,23 +33,24 @@
       "10619766510735421970",
       "10018107605149526613",
       "703701651756673137",
-      "2975213977259876849"
+      "2975213977259876849",
+      "13047123435375062634"
     ],
     "pending_recovery": {
-      "authorization_generation": 31,
-      "title": "M1-M3 Retro Fix Recovery 8",
+      "authorization_generation": 34,
+      "title": "M1-M3 Retro Fix Recovery 9",
       "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
       "starting_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
       "plan_approval_required": true,
-      "reason": "Recovery 7 session 2975213977259876849 is terminal COMPLETED (Bridge status run 40664178641 and latest Supervisor run 40664279094); do not wake or approve it. Its planGenerated activity (plan e3f707098e7848c7b15238ae80d2d038) only names matrix categories and generic steps; outputs=null and it contains no reviewable row-by-row matrix. The plan is incomplete against both frozen DOCX files. Repair remains required. Authorize exactly one replacement session from the existing PR #7 branch at exact head d0b36bf7763c868619c617593c5323d7d3294975, based on feat/v2-m2.2-provider-linking-3617877269471098838 at exact SHA 737097483495f1d650110a18788a21db62f71bba. Keep M4 quarantined and create no duplicate PR.",
-      "session_id": "13047123435375062634",
-      "status": "SESSION_CREATED_AWAITING_PLAN",
-      "created_via_bridge_run": 40664410051,
-      "adopted_generation": 32
+      "reason": "Recovery 8 session 13047123435375062634 is terminal COMPLETED with outputs=null (fresh Bridge status run 40672217885 and latest Supervisor run 40672241899); do not wake or approve it. Its corrected matrix comment 6465537210 still mis-cites the frozen docs: M1 uses Documentation §20.1 (actually Documentation §20 is Telemetry & Economy Balancing) and Design §19 (Admin/QTV); M2 uses Documentation §25.1 (Master Plan) and Design §20 (Technical Architecture) instead of account/identity sources; M3 uses Documentation §26.1 (Agent Rules) instead of §5 Economy V2. It also paraphrases frozen invariant/DoD text rather than quoting it, planGenerated count says 111 while required full matrix is 122 rows, and marks exclusions verified absent without exact code audit. Repair remains required before approval or M1-M3 audit. Authorize exactly one replacement from the existing PR #7 branch at exact head d0b36bf7763c868619c617593c5323d7d3294975, base feat/v2-m2.2-provider-linking-3617877269471098838 at SHA 737097483495f1d650110a18788a21db62f71bba. Keep M4 quarantined and do not create a duplicate PR.",
+      "session_id": null,
+      "status": "AUTHORIZED_AWAITING_CREATION",
+      "created_via_bridge_run": null,
+      "adopted_generation": null
     },
-    "last_terminal_recovery_session": "2975213977259876849",
-    "active_recovery_session": "13047123435375062634",
-    "last_terminal_recovery_state": "COMPLETED_NO_REVIEWABLE_MATRIX",
+    "last_terminal_recovery_session": "13047123435375062634",
+    "active_recovery_session": null,
+    "last_terminal_recovery_state": "COMPLETED_NO_APPROVABLE_MATRIX",
     "plan_audit": {
       "state": "REJECTED_NEEDS_CORRECTION",
       "proposal_comment_id": 6465421186,
@@ -115,7 +116,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": false,
+  "next_session_allowed": true,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -155,8 +156,8 @@
     "mechanical_ci": "PASS",
     "semantic_status": "FAIL_GAPS_REQUIRE_REPAIR",
     "accepted": false,
-    "next_action": "Recovery 8 is still the sole active session. Its first 122-row matrix proposal was rejected at generation 32 due frozen-source ID/text mismatches; precise same-session correction was sent (comment 6465464345). Wait for corrected plan and re-audit both DOCX files; do not approve or allow code changes yet."
+    "next_action": "Recovery 9 must return an approvable, exact-source 122-row M1-M3 matrix proposal. Correct section citations to Documentation §§19/15/5/17/24 and Design §§20/19/3/4/21/31 as applicable; quote frozen source text verbatim; keep exclusions GAP until exact code absence audit. No code until plan approval."
   },
-  "next_milestone": "M1-M3 Retro Fix Recovery 8",
+  "next_milestone": "M1-M3 Retro Fix Recovery 9",
   "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937"
 }
