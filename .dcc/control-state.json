@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 38,
+  "generation": 39,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "WAITING_RECOVERY_SESSION",
-  "jules_session_id": "11341023579517942837",
+  "status": "WAITING_PLAN_APPROVAL",
+  "jules_session_id": "9445771863876317298",
   "approved_plan_id": null,
   "pr_number": 7,
   "control_pr_number": 7,
@@ -20,10 +20,10 @@
     "historical_session": "9668882045283125937",
     "first_replacement_session": "9465567810961076340",
     "first_replacement_state": "COMPLETED",
-    "replacement_session": null,
-    "replacement_state": "TERMINAL_INVALID_PLAN",
+    "replacement_session": "9445771863876317298",
+    "replacement_state": "ACTIVE_PLAN_REVIEW",
     "replacement_start_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
-    "reason": "Recovery 10 session 11341023579517942837 is terminal COMPLETED with outputs=null (Bridge status run 40687334305 and latest Supervisor run 40687457376); activities contain only planGenerated d59b79670a934a72b30f2184ccc39156, no implementation. The 122-row matrix in bot comment 6467829909 is not approvable: it still contains rewritten/invented source quotations (e.g. Design §21 #28 and #29; Design §31 #39/#40; exclusion rows quote phrases not present verbatim in cited source). The session has no safe same-session correction path because its Jules API state is COMPLETED and terminal sessions must not be woken. Authorize exactly one Recovery 11 from the same existing PR #7 branch/head; no duplicate PR. Keep M4 quarantined.",
+    "reason": "Recovery 11 session 9445771863876317298 created by Bridge run 40687792795 under generation 38 and adopted as sole active session at generation 39. Recovery 10 11341023579517942837 is terminal and protected; PR #7 unchanged at d0b36bf... / base 737097...; M4 remains quarantined.",
     "single_active_session_policy": true,
     "do_not_wake_terminal_sessions": [
       "9668882045283125937",
@@ -45,13 +45,13 @@
       "starting_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
       "plan_approval_required": true,
       "reason": "Recovery 10 is terminal COMPLETED with outputs=null after planGenerated only; same-session continuation is impossible under the terminal-session fence. Its matrix remains non-verbatim and incomplete semantically. Continue the same PR #7 repair on the exact same branch/head/base; no duplicate PR or code until approval.",
-      "session_id": null,
-      "status": "AUTHORIZED_AWAITING_CREATION",
-      "created_via_bridge_run": null,
-      "adopted_generation": null
+      "session_id": "9445771863876317298",
+      "status": "CREATED_AWAITING_ADOPTION",
+      "created_via_bridge_run": 40687792795,
+      "adopted_generation": 39
     },
     "last_terminal_recovery_session": "11341023579517942837",
-    "active_recovery_session": null,
+    "active_recovery_session": "9445771863876317298",
     "last_terminal_recovery_state": "COMPLETED_PLAN_INVALID_OUTPUTS_NULL",
     "plan_audit": {
       "state": "REJECTED_NEEDS_CORRECTION",
@@ -118,7 +118,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": true,
+  "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
