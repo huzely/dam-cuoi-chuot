@@ -87,9 +87,18 @@ jobs:
                   fi
                 done
 
+                # Retrospective verification may outlive its Jules session. Allow only the
+                # implementation PR explicitly pinned by the authoritative checkpoint;
+                # all repository/owner/base guards below remain mandatory.
+                checkpointed_retro_pr=false
+                if [[ "$milestone" == "M1-M3_RETRO_FIX" && -n "$implementation_pr" && \
+                      "$implementation_pr" != null && "$implementation_pr" == "$pr_number" ]]; then
+                  checkpointed_retro_pr=true
+                fi
+
                 if [[ "$pr_state" == open && "$head_repo" == "$GITHUB_REPOSITORY" && "$pr_user" == huzely && \
                       "$base_ref" == "$expected_base_branch" && "$base_sha" == "$expected_base_sha" && \
-                      "$identity_match" == true ]]; then
+                      ( "$identity_match" == true || "$checkpointed_retro_pr" == true ) ]]; then
                   if [[ -z "$implementation_pr" || "$implementation_pr" == null || "$implementation_pr" == "$pr_number" ]]; then
                     active=true
                   fi
