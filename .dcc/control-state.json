@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 64,
+  "generation": 65,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M4",
   "milestone_title": "Progress/Unlock Compatibility",
-  "status": "OWNER_ACTION_REQUIRED",
+  "status": "RECOVERY_AUTHORIZED",
   "jules_session_id": null,
   "approved_plan_id": null,
   "pr_number": 8,
@@ -16,85 +16,39 @@
   "expected_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
   "expected_base_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
   "audit_baseline_head_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
+  "next_session_allowed": true,
+  "next_milestone": "M4 Progress/Unlock Compatibility",
+  "next_starting_branch": "m4-progress-unlock-v2-4853011554120262538",
+  "suspended_next_milestone": null,
   "recovery": {
     "single_active_session_policy": true,
     "active_recovery_session": null,
-    "last_terminal_recovery_session": "12369416621004182728",
-    "last_terminal_recovery_state": "COMPLETED_PLAN_ONLY_OUTPUTS_NULL",
-    "pending_recovery": null,
+    "last_terminal_recovery_session": "17912904003091294207",
+    "last_terminal_recovery_state": "COMPLETED_TERMINAL_PLAN_ONLY",
+    "pending_recovery": "ONE_SAFE_M4_CONTINUATION_AUTHORIZED",
     "circuit_breaker": {
-      "state": "TRIPPED",
+      "state": "OWNER_OVERRIDE_ONE_SHOT",
       "max_failed_attempts_per_milestone": 5,
       "observed_attempts_exceeded_limit": true,
       "automatic_recovery_creation_allowed": false,
       "reset_on_new_session": false,
       "owner_review_required": false,
-      "reason": "Prior M1-M3 retrospective recovery stop is superseded by the owner's implementation-first strategy. No M1-M3 retro session is authorized; one M4 continuation is authorized solely to reconcile the existing M4 implementation onto the exact accepted M3 head."
+      "reason": "Owner explicitly requested development continue. Exactly one additional M4 continuation is authorized; no automatic retry beyond it."
     },
     "approval_gate_policy": {
       "waiting_plan_approval_is_terminal": false,
       "create_recovery_from_waiting_plan_approval": false,
-      "required_controller_outcomes": [
-        "PLAN_APPROVED",
-        "PLAN_CORRECTION_SENT_SAME_SESSION",
-        "OWNER_ACTION_REQUIRED"
-      ],
-      "rule": "When Jules asks Approve Plan, fetch and semantically audit the actual plan. Approve it if correct; otherwise send correction to the SAME non-terminal session. Never create a recovery merely because approval is pending or a plan is wrong."
+      "required_controller_outcomes": ["PLAN_APPROVED", "PLAN_CORRECTION_SENT_SAME_SESSION", "OWNER_ACTION_REQUIRED"],
+      "rule": "Audit the actual plan immediately. Approve a correct plan on the same non-terminal session; otherwise correct that same session. Never create another session merely because approval is pending."
     },
     "do_not_wake_terminal_sessions": [
-      "9668882045283125937",
-      "9465567810961076340",
-      "11994204223709041554",
-      "12132956719456106978",
-      "10619766510735421970",
-      "10018107605149526613",
-      "703701651756673137",
-      "2975213977259876849",
-      "13047123435375062634",
-      "848983161116916375",
-      "11341023579517942837",
-      "9445771863876317298",
-      "10987024922384397097",
-      "17428010912306933625",
-      "12369416621004182728",
-      "6711841954647048636",
-      "8569927561636622091",
-      "11680409446806753179",
-      "17912904003091294207"
+      "9668882045283125937", "9465567810961076340", "11994204223709041554", "12132956719456106978", "10619766510735421970", "10018107605149526613", "703701651756673137", "2975213977259876849", "13047123435375062634", "848983161116916375", "11341023579517942837", "9445771863876317298", "10987024922384397097", "17428010912306933625", "12369416621004182728", "6711841954647048636", "8569927561636622091", "11680409446806753179", "17912904003091294207"
     ]
   },
-  "retro_audit": {
-    "m1": {
-      "historical_status": "PASS",
-      "status": "EVIDENCE_DEBT_ONLY",
-      "evidence_debt": [
-        "Retrospective matrix/exact historical CI citation remains incomplete; no concrete regression is established."
-      ]
-    },
-    "m2": {
-      "historical_status": "PASS",
-      "status": "EVIDENCE_DEBT_ONLY",
-      "evidence_debt": [
-        "Retrospective matrix remains incomplete. Threads app-binding and token-sentinel verification remain end-to-end audit items; do not downgrade historical PASS absent concrete regression."
-      ]
-    },
-    "m3": {
-      "historical_status": "INHERITED_IMPLEMENTATION_BASELINE",
-      "status": "MECHANICAL_CI_PENDING",
-      "evidence_debt": [
-        "122-row matrix deficiencies do not block forward implementation; defer comprehensive semantic audit to final M1-M22 verification."
-      ]
-    }
-  },
-  "suspended_next_milestone": null,
   "frozen_spec": {
-    "documents": [
-      "Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx",
-      "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx"
-    ],
-    "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
+    "documents": ["Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx", "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx"],
+    "rule": "Read both frozen documents for milestone prompts, plan/code audit and final PASS decisions."
   },
-  "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -132,34 +86,16 @@
     "head_sha": "9d66852fd4196336f390816d30a5d22eb61c3e37",
     "base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
     "base_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
-    "merge_base_before_reconciliation": "76262b174ac85bda1d6572343760737712c31c77",
     "ancestry": "RECONCILIATION_REQUIRED",
-    "mechanical_ci_run_id": 40869341704,
-    "mechanical_ci": "SKIPPED_EXACT_HEAD_CI",
-    "semantic_status": "PLAN_NOT_APPROVABLE_TERMINAL",
     "accepted": false,
-    "next_action": "OWNER_ACTION_REQUIRED: no active non-terminal Jules session remains. Do not message/approve terminal sessions or create another session. Resolve Jules plan-gate behavior before M4 implementation can continue.",
-    "observed_pr_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
-    "observed_pr_base_sha": "76262b174ac85bda1d6572343760737712c31c77"
+    "next_action": "CREATE_ONE_SAFE_M4_CONTINUATION"
   },
-  "next_milestone": "M4 Progress/Unlock Compatibility",
-  "next_starting_branch": "m4-progress-unlock-v2-4853011554120262538",
-  "current_session_observation": {
-    "session_id": "17912904003091294207",
-    "status": "COMPLETED_TERMINAL_PLAN_ONLY",
-    "approval_action": "Protected; do not wake or approve. Bridge run 40891294525 reports state COMPLETED, outputs null, and only a planGenerated activity. This is the second consecutive M4 plan-gated session to terminate plan-only."
-  },
-  "owner_strategy_update": {
-    "generation": 56,
-    "policy": "IMPLEMENTATION_FIRST_FULL_AUDIT_LATER",
-    "accepted_historical_pass": {
-      "M1": "PASS",
-      "M2": "PASS"
-    },
-    "m3": "Exact-head CI passed on PR #7 head 2129f5a667a1447eaa60d81461211a2564368f69; minimum mechanical baseline only, semantic final audit deferred.",
-    "no_retro_recovery": true,
-    "m4": "One continuation authorized because existing PR #8 is concretely stale-base and original session is terminal; continue M4 from exact M3 head while preserving implementation.",
-    "no_production": true
+  "m3_mechanical_baseline": {
+    "pr_number": 7,
+    "head_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
+    "exact_head_ci_run_id": 40835479530,
+    "exact_head_ci": "PASS",
+    "scope": "Minimum mechanical baseline; final semantic audit deferred to M1-M22 verification."
   },
   "m4_reconciliation": {
     "existing_pr": 8,
@@ -167,54 +103,20 @@
     "existing_session_state": "COMPLETED_PROTECTED",
     "old_merge_base": "76262b174ac85bda1d6572343760737712c31c77",
     "required_new_base": "2129f5a667a1447eaa60d81461211a2564368f69",
-    "preserve_existing_work": true,
-    "new_session_created": true,
-    "status": "OWNER_ACTION_REQUIRED",
-    "authorization_reason": "No more M4 replacement sessions are authorized in this run. Two successive plan-gated continuations (11680409446806753179 and 17912904003091294207) terminally completed with outputs null after only planGenerated. The second plan would remove all unlock prerequisites, unlocking Chapter IX before the story gate, contrary to frozen Design §9. The active plan cannot be corrected/approved because it is terminal and terminal sessions must not be woken. Owner must resolve Jules plan-gate/session behavior before continuation.",
-    "new_session_id": "17912904003091294207",
-    "new_session_start_sha": "9d66852fd4196336f390816d30a5d22eb61c3e37",
-    "failed_continuation": {
-      "session_id": "11680409446806753179",
-      "state": "COMPLETED",
-      "reason": "Bridge status at run 40881999109: outputs=null; sole activity planGenerated. It terminally ended before approval/implementation; no in-session correction or approval is permitted.",
-      "protected": true
-    },
-    "correct_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
     "current_pr8_head": "9d66852fd4196336f390816d30a5d22eb61c3e37",
-    "pr8_head_drift_from_checkpoint": true,
-    "pr8_exact_head_ci": "SKIPPED",
-    "plan_audit_findings": [
-      "Plan proposes default unlocked chapters 1,3,5,10 and a chapter prerequisite graph not stated by either frozen DOCX; must be sourced from existing compatibility behavior or omitted.",
-      "Frozen Documentation §2 and Design §2.1 define progression as natural, not a rigid lock chain; Design §2.2 preserves Chapter IX as Hội Xuân and Chapter X as the existing Ghép Tranh/Ghép Chung engine."
-    ],
-    "terminal_plan_only_sessions": [
-      {
-        "session_id": "11680409446806753179",
-        "state": "COMPLETED",
-        "outputs": null,
-        "activities": [
-          "planGenerated"
-        ],
-        "protected": true
-      },
-      {
-        "session_id": "17912904003091294207",
-        "state": "COMPLETED",
-        "outputs": null,
-        "activities": [
-          "planGenerated"
-        ],
-        "protected": true
-      }
-    ],
-    "plan_audit_failure": "Plan step 2 sets DEFAULT_UNLOCKED_CHAPTERS=[] and CHAPTER_PREREQUISITES={}; evaluateUnlockState uses [].every(...) so this would unlock every chapter, including Chapter IX before story unlock. Documentation §2 says flexible access after unlock; Design §2.1 rejects rigid lock chains but Design §9 still requires the Chapter IX hub after story unlock, then free access. Preserve existing legacy compatibility without invented sequential chains or removing the Chapter IX story gate.",
-    "owner_action_detail": "Resolve the Jules/Bridge plan-approval flow so an actual plan can be corrected/approved before a terminal session, or explicitly authorize a safe recovery policy. No third M4 session is authorized automatically."
+    "preserve_existing_work": true,
+    "status": "ONE_SAFE_CONTINUATION_AUTHORIZED",
+    "story_gate_rule": "Do not use an empty prerequisite map in a way that makes every chapter unlocked. Preserve legacy flexible access while retaining the frozen-spec Chapter IX story unlock gate. Do not invent a rigid sequential chapter chain.",
+    "terminal_plan_only_sessions": ["11680409446806753179", "17912904003091294207"]
   },
-  "m3_mechanical_baseline": {
-    "pr_number": 7,
-    "head_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
-    "exact_head_ci_run_id": 40835479530,
-    "exact_head_ci": "PASS",
-    "scope": "Minimum mechanical baseline only; semantic M3 acceptance deferred to final M1-M22 verification."
+  "owner_strategy_update": {
+    "generation": 65,
+    "policy": "IMPLEMENTATION_FIRST_FULL_AUDIT_LATER",
+    "accepted_historical_pass": {"M1": "PASS", "M2": "PASS"},
+    "m3": "Exact-head CI PASS at 2129f5a667a1447eaa60d81461211a2564368f69.",
+    "no_retro_recovery": true,
+    "m4": "Finish reconciliation and minimum verification, then advance directly to M5.",
+    "continue_through": "M22_THEN_FULL_GAME_VERIFICATION",
+    "no_production": true
   }
 }
