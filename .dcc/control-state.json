@@ -1,17 +1,17 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 56,
+  "generation": 57,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M4",
   "milestone_title": "Progress/Unlock Compatibility",
-  "status": "M4_CONTINUATION_AUTHORIZED",
-  "jules_session_id": null,
+  "status": "M4_WAITING_PLAN_APPROVAL",
+  "jules_session_id": "6711841954647048636",
   "approved_plan_id": null,
   "pr_number": 8,
   "control_pr_number": 7,
   "implementation_pr_number": 8,
-  "starting_branch": "m4-progress-unlock-v2-4853011554120262538",
+  "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
   "expected_start_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
   "expected_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
   "expected_base_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
@@ -90,7 +90,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": true,
+  "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -134,14 +134,14 @@
     "mechanical_ci": "SKIPPED_EXACT_HEAD_CI",
     "semantic_status": "IMPLEMENTATION_IN_PROGRESS",
     "accepted": false,
-    "next_action": "Create exactly one M4 continuation from accepted M3 head 2129f5a667a1447eaa60d81461211a2564368f69. Reuse existing M4 implementation from PR #8; reconcile its base and preserve the existing scope. Do not touch M1-M3 retrospective evidence or begin M5."
+    "next_action": "Inspect actual plan of sole active M4 continuation session 6711841954647048636. Do not approve until plan has been retrieved and audited against both frozen M4 DOCX sources. Preserve PR #8 implementation."
   },
   "next_milestone": "M4 Progress/Unlock Compatibility",
   "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
   "current_session_observation": {
-    "session_id": "4853011554120262538",
-    "status": "COMPLETED",
-    "approval_action": "Protected terminal session; do not message or wake."
+    "session_id": "6711841954647048636",
+    "status": "WAITING_PLAN_APPROVAL",
+    "approval_action": "Retrieve and audit actual plan against both frozen M4 DOCX sections before approval."
   },
   "owner_strategy_update": {
     "generation": 56,
@@ -162,9 +162,11 @@
     "old_merge_base": "76262b174ac85bda1d6572343760737712c31c77",
     "required_new_base": "2129f5a667a1447eaa60d81461211a2564368f69",
     "preserve_existing_work": true,
-    "new_session_created": false,
-    "status": "AUTHORIZED_SINGLE_M4_CONTINUATION",
-    "authorization_reason": "Existing M4 implementation is concrete but its branch has stale ancestry relative to the exact M3 head, its exact-head CI was skipped, and the original Jules session is terminal. Owner strategy authorizes forward implementation and reconciliation; this continuation is not a retrospective recovery."
+    "new_session_created": true,
+    "status": "WAITING_FOR_PLAN_AUDIT",
+    "authorization_reason": "Existing M4 implementation is concrete but its branch has stale ancestry relative to the exact M3 head, its exact-head CI was skipped, and the original Jules session is terminal. Owner strategy authorizes forward implementation and reconciliation; this continuation is not a retrospective recovery.",
+    "new_session_id": "6711841954647048636",
+    "new_session_start_sha": "2129f5a667a1447eaa60d81461211a2564368f69"
   },
   "m3_mechanical_baseline": {
     "pr_number": 7,
