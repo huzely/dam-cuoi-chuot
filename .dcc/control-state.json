@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 57,
+  "generation": 58,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M4",
   "milestone_title": "Progress/Unlock Compatibility",
-  "status": "M4_WAITING_PLAN_APPROVAL",
-  "jules_session_id": "6711841954647048636",
+  "status": "M4_CONTINUATION_AUTHORIZED",
+  "jules_session_id": null,
   "approved_plan_id": null,
   "pr_number": 8,
   "control_pr_number": 7,
@@ -56,7 +56,8 @@
       "9445771863876317298",
       "10987024922384397097",
       "17428010912306933625",
-      "12369416621004182728"
+      "12369416621004182728",
+      "6711841954647048636"
     ]
   },
   "retro_audit": {
@@ -90,7 +91,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": false,
+  "next_session_allowed": true,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -134,14 +135,14 @@
     "mechanical_ci": "SKIPPED_EXACT_HEAD_CI",
     "semantic_status": "IMPLEMENTATION_IN_PROGRESS",
     "accepted": false,
-    "next_action": "Inspect actual plan of sole active M4 continuation session 6711841954647048636. Do not approve until plan has been retrieved and audited against both frozen M4 DOCX sources. Preserve PR #8 implementation."
+    "next_action": "A single corrected M4 continuation is authorized because session 6711841954647048636 is terminal after clone failure against a non-existent branch. Start from exact existing M3 branch feat/v2-m3-wallet-ledger-holds-9668882045281098838 at 2129f5a667a1447eaa60d81461211a2564368f69; preserve PR #8's M4 implementation."
   },
   "next_milestone": "M4 Progress/Unlock Compatibility",
   "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
   "current_session_observation": {
     "session_id": "6711841954647048636",
-    "status": "WAITING_PLAN_APPROVAL",
-    "approval_action": "Retrieve and audit actual plan against both frozen M4 DOCX sections before approval."
+    "status": "FAILED_TERMINAL",
+    "approval_action": "Do not wake; Jules failed to clone due incorrect source branch name. Correct M3 branch verified as feat/v2-m3-wallet-ledger-holds-9668882045281098838 at exact head 2129f5a667a1447eaa60d81461211a2564368f69."
   },
   "owner_strategy_update": {
     "generation": 56,
@@ -162,11 +163,18 @@
     "old_merge_base": "76262b174ac85bda1d6572343760737712c31c77",
     "required_new_base": "2129f5a667a1447eaa60d81461211a2564368f69",
     "preserve_existing_work": true,
-    "new_session_created": true,
-    "status": "WAITING_FOR_PLAN_AUDIT",
+    "new_session_created": false,
+    "status": "AUTHORIZED_CORRECTED_CONTINUATION",
     "authorization_reason": "Existing M4 implementation is concrete but its branch has stale ancestry relative to the exact M3 head, its exact-head CI was skipped, and the original Jules session is terminal. Owner strategy authorizes forward implementation and reconciliation; this continuation is not a retrospective recovery.",
-    "new_session_id": "6711841954647048636",
-    "new_session_start_sha": "2129f5a667a1447eaa60d81461211a2564368f69"
+    "new_session_id": null,
+    "new_session_start_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
+    "failed_continuation": {
+      "session_id": "6711841954647048636",
+      "state": "FAILED",
+      "reason": "Jules clone failed: Remote branch feat/v2-m3-wallet-ledger-holds-9668882045281098838 not found; GitHub evidence showed the actual PR #7 branch includes suffix 9668882045281098838 and exists at 2129f5a667a1447eaa60d81461211a2564368f69.",
+      "protected": true
+    },
+    "correct_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838"
   },
   "m3_mechanical_baseline": {
     "pr_number": 7,
