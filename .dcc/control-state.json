@@ -1,21 +1,21 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 59,
+  "generation": 60,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M4",
   "milestone_title": "Progress/Unlock Compatibility",
-  "status": "M4_WAITING_PLAN_APPROVAL",
-  "jules_session_id": "8569927561636622091",
+  "status": "M4_CONTINUATION_AUTHORIZED",
+  "jules_session_id": null,
   "approved_plan_id": null,
   "pr_number": 8,
   "control_pr_number": 7,
   "implementation_pr_number": 8,
-  "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
+  "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
   "expected_start_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
-  "expected_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
+  "expected_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
   "expected_base_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
-  "audit_baseline_head_sha": "76262b174ac85bda1d6572343760737712c31c77",
+  "audit_baseline_head_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
   "recovery": {
     "single_active_session_policy": true,
     "active_recovery_session": null,
@@ -57,7 +57,8 @@
       "10987024922384397097",
       "17428010912306933625",
       "12369416621004182728",
-      "6711841954647048636"
+      "6711841954647048636",
+      "8569927561636622091"
     ]
   },
   "retro_audit": {
@@ -91,7 +92,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": false,
+  "next_session_allowed": true,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -118,7 +119,7 @@
     "production_db_allowed": false,
     "semantic_pass_required_after_ci": true,
     "plan_approval_required": true,
-    "freeze_m4_until_retro_audit_pass": true,
+    "freeze_m4_until_retro_audit_pass": false,
     "unproven_frozen_spec_requirement_is_gap": true,
     "max_failed_attempts_per_milestone": 5,
     "hard_stop_after_retry_budget": true,
@@ -126,23 +127,25 @@
   },
   "candidate_audit": {
     "pr_number": 8,
-    "head_sha": "881ea70dafd58d4255a0c149dcf8f013dc2092a1",
-    "base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
+    "head_sha": "9d66852fd4196336f390816d30a5d22eb61c3e37",
+    "base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
     "base_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
     "merge_base_before_reconciliation": "76262b174ac85bda1d6572343760737712c31c77",
     "ancestry": "RECONCILIATION_REQUIRED",
-    "mechanical_ci_run_id": 40861454993,
+    "mechanical_ci_run_id": 40869341704,
     "mechanical_ci": "SKIPPED_EXACT_HEAD_CI",
     "semantic_status": "IMPLEMENTATION_IN_PROGRESS",
     "accepted": false,
-    "next_action": "Inspect actual plan of sole active M4 continuation session 8569927561636622091. Do not approve until plan is retrieved and audited against both frozen M4 DOCX sources; preserve existing PR #8 implementation."
+    "next_action": "Create exactly one M4 continuation from the verified M3 branch/SHA. Inspect and salvage PR #8's M4 changes without changing M1/M2 historical PASS or doing M1-M3 retrospective work. Keep one M4 implementation PR; require exact-head mechanical CI before milestone acceptance.",
+    "observed_pr_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
+    "observed_pr_base_sha": "76262b174ac85bda1d6572343760737712c31c77"
   },
   "next_milestone": "M4 Progress/Unlock Compatibility",
-  "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
+  "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
   "current_session_observation": {
     "session_id": "8569927561636622091",
-    "status": "CREATED_PLAN_GATE",
-    "approval_action": "Retrieve and semantically audit actual plan against both frozen M4 DOCX sources before approval."
+    "status": "FAILED_TERMINAL_WRONG_STARTING_BRANCH",
+    "approval_action": "Protected: do not wake; supervisor confirmed FAILED. The checkpoint supplied a nonexistent branch suffix 9668882045281098838; PR #7 confirms the actual source ref ends 9668882045283125937."
   },
   "owner_strategy_update": {
     "generation": 56,
@@ -164,17 +167,20 @@
     "required_new_base": "2129f5a667a1447eaa60d81461211a2564368f69",
     "preserve_existing_work": true,
     "new_session_created": true,
-    "status": "WAITING_FOR_PLAN_AUDIT",
-    "authorization_reason": "Existing M4 implementation is concrete but its branch has stale ancestry relative to the exact M3 head, its exact-head CI was skipped, and the original Jules session is terminal. Owner strategy authorizes forward implementation and reconciliation; this continuation is not a retrospective recovery.",
-    "new_session_id": "8569927561636622091",
+    "status": "CONTINUATION_AUTHORIZED",
+    "authorization_reason": "One M4 continuation is authorized because the prior continuation session is confirmed FAILED after cloning the nonexistent source branch recorded in the checkpoint. The exact M3 branch/SHA are verified from PR #7. Preserve M1/M2 PASS and existing PR #8 work; no retrospective repair is authorized.",
+    "new_session_id": null,
     "new_session_start_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
     "failed_continuation": {
-      "session_id": "6711841954647048636",
+      "session_id": "8569927561636622091",
       "state": "FAILED",
-      "reason": "Jules clone failed: Remote branch feat/v2-m3-wallet-ledger-holds-9668882045281098838 not found; GitHub evidence showed the actual PR #7 branch includes suffix 9668882045281098838 and exists at 2129f5a667a1447eaa60d81461211a2564368f69.",
+      "reason": "Supervisor run 40869363152 confirmed FAILED. Its recorded starting branch feat/v2-m3-wallet-ledger-holds-9668882045281098838 does not exist; PR #7 verifies feat/v2-m3-wallet-ledger-holds-9668882045283125937 at 2129f5a667a1447eaa60d81461211a2564368f69.",
       "protected": true
     },
-    "correct_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838"
+    "correct_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
+    "current_pr8_head": "9d66852fd4196336f390816d30a5d22eb61c3e37",
+    "pr8_head_drift_from_checkpoint": true,
+    "pr8_exact_head_ci": "SKIPPED"
   },
   "m3_mechanical_baseline": {
     "pr_number": 7,
