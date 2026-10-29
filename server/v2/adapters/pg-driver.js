@@ -644,6 +644,94 @@ export class PgTxContext {
       },
     };
 
+    this.progress = {
+      upsertProgress: async ({ userId, chapterId, completed = false, progress = {} }) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+          return null;
+        }
+        const res = await this.client.query(
+          `INSERT INTO public.v2_chapter_progress (user_id, chapter_id, completed, completed_at, progress, updated_at)
+           VALUES ($1::uuid, $2, $3, CASE WHEN $3 THEN NOW() ELSE NULL END, $4::jsonb, NOW())
+           ON CONFLICT (user_id, chapter_id) DO UPDATE SET
+             completed = EXCLUDED.completed OR public.v2_chapter_progress.completed,
+             completed_at = CASE
+               WHEN EXCLUDED.completed AND public.v2_chapter_progress.completed_at IS NULL THEN NOW()
+               ELSE public.v2_chapter_progress.completed_at
+             END,
+             progress = EXCLUDED.progress,
+             updated_at = NOW()
+           RETURNING user_id, chapter_id, completed, completed_at, progress, created_at, updated_at`,
+          [userId, chapterId, Boolean(completed), JSON.stringify(progress || {})]
+        );
+        const row = res.rows[0];
+        return {
+          userId: row.user_id,
+          chapterId: row.chapter_id,
+          completed: row.completed,
+          completedAt: row.completed_at,
+          progress: row.progress,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+      getByUser: async (userId) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+          return [];
+        }
+        const res = await this.client.query(
+          `SELECT user_id, chapter_id, completed, completed_at, progress, created_at, updated_at
+           FROM public.v2_chapter_progress
+           WHERE user_id = $1::uuid
+           ORDER BY chapter_id ASC`,
+          [userId]
+        );
+        return res.rows.map(row => ({
+          userId: row.user_id,
+          chapterId: row.chapter_id,
+          completed: row.completed,
+          completedAt: row.completed_at,
+          progress: row.progress,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        }));
+      },
+      getByUserAndChapter: async (userId, chapterId) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId) || !chapterId) {
+          return null;
+        }
+        const res = await this.client.query(
+          `SELECT user_id, chapter_id, completed, completed_at, progress, created_at, updated_at
+           FROM public.v2_chapter_progress
+           WHERE user_id = $1::uuid AND chapter_id = $2`,
+          [userId, chapterId]
+        );
+        if (res.rows.length === 0) return null;
+        const row = res.rows[0];
+        return {
+          userId: row.user_id,
+          chapterId: row.chapter_id,
+          completed: row.completed,
+          completedAt: row.completed_at,
+          progress: row.progress,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+      getCompletedChapters: async (userId) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+          return [];
+        }
+        const res = await this.client.query(
+          `SELECT chapter_id
+           FROM public.v2_chapter_progress
+           WHERE user_id = $1::uuid AND completed = TRUE
+           ORDER BY chapter_id ASC`,
+          [userId]
+        );
+        return res.rows.map(r => r.chapter_id);
+      },
+    };
+
     this.holds = {
       create: async ({ userId, amount, purpose, reference = null, status = 'CREATED', metadata = {} }) => {
         const res = await this.client.query(

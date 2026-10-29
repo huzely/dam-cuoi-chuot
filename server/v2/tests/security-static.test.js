@@ -21,6 +21,15 @@ function getAllFiles(dirPath, arrayOfFiles = []) {
   return arrayOfFiles;
 }
 
+test('Schema Migration Static Verification: 005_v2_progress_unlock_schema.sql format & integrity', () => {
+  const sqlPath = path.join(v2RootDir, 'migrations/005_v2_progress_unlock_schema.sql');
+  const content = fs.readFileSync(sqlPath, 'utf8');
+
+  assert.ok(content.includes('CREATE TABLE IF NOT EXISTS public.v2_chapter_progress'), 'Must create v2_chapter_progress table');
+  assert.ok(content.includes('PRIMARY KEY (user_id, chapter_id)'), 'Must define composite primary key (user_id, chapter_id)');
+  assert.ok(content.includes('REVOKE INSERT, UPDATE, DELETE ON public.v2_chapter_progress FROM PUBLIC;'), 'Must revoke write privileges from PUBLIC');
+});
+
 test('Security Static Scan 1: No hardcoded service_role keys or secrets in V2 code', () => {
   const files = getAllFiles(v2RootDir).filter(f => f.endsWith('.js') || f.endsWith('.sql'));
 
