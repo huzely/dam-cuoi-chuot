@@ -1,18 +1,18 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 53,
+  "generation": 54,
   "protocol_file": ".dcc/coordination-protocol.md",
-  "milestone": "M1-M3_RETRO_FIX",
-  "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "HARD_STOP_OWNER_REVIEW",
+  "milestone": "M3_BASELINE_MECHANICAL_CHECK",
+  "milestone_title": "M3 inherited implementation baseline — exact-head CI before M4 reconciliation",
+  "status": "MECHANICAL_CI_PENDING",
   "jules_session_id": null,
   "approved_plan_id": null,
   "pr_number": 7,
   "control_pr_number": 7,
   "implementation_pr_number": 7,
-  "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
-  "expected_start_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
+  "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
+  "expected_start_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
   "expected_base_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
   "expected_base_sha": "737097483495f1d650110a18788a21db62f71bba",
   "audit_baseline_head_sha": "76262b174ac85bda1d6572343760737712c31c77",
@@ -60,9 +60,27 @@
     ]
   },
   "retro_audit": {
-    "m1": {"status": "GAP", "gaps": ["Exact-head test CI for accepted M1 head f47358b73dbb99ff53be0f51b2df93ef7f4743b4 is absent.", "M1 requirement/invariant/exclusion/DoD traceability remains incomplete."]},
-    "m2": {"status": "GAP", "gaps": ["M2 provider/linking requirement matrix remains incomplete.", "Threads app binding remains unproven.", "No sentinel test proves user/app tokens and client secrets cannot appear in errors/stacks."]},
-    "m3": {"status": "GAP", "gaps": ["M3 requirement/invariant/DoD traceability remains incomplete."], "mechanical_ci": {"run_id": 40726218314, "head_sha": "d0b36bf7763c868619c617593c5323d7d3294975", "status": "PASS", "evidence": "Exact-head mechanical CI passed; semantic acceptance remains GAP."}}
+    "m1": {
+      "historical_status": "PASS",
+      "status": "EVIDENCE_DEBT_ONLY",
+      "evidence_debt": [
+        "Retrospective matrix/exact historical CI citation remains incomplete; no concrete regression is established."
+      ]
+    },
+    "m2": {
+      "historical_status": "PASS",
+      "status": "EVIDENCE_DEBT_ONLY",
+      "evidence_debt": [
+        "Retrospective matrix remains incomplete. Threads app-binding and token-sentinel verification remain end-to-end audit items; do not downgrade historical PASS absent concrete regression."
+      ]
+    },
+    "m3": {
+      "historical_status": "INHERITED_IMPLEMENTATION_BASELINE",
+      "status": "MECHANICAL_CI_PENDING",
+      "evidence_debt": [
+        "122-row matrix deficiencies do not block forward implementation; defer comprehensive semantic audit to final M1-M22 verification."
+      ]
+    }
   },
   "suspended_next_milestone": {
     "milestone": "M4",
@@ -70,12 +88,15 @@
     "pr_number": 8,
     "branch": "m4-progress-unlock-v2-4853011554120262538",
     "head_sha": "8c13a9ad089a1f97d878683f803e9418afa8b213",
-    "status_at_freeze": "IMPLEMENTED_PREMATURELY_QUARANTINED",
+    "status_at_freeze": "RECONCILIATION_REQUIRED",
     "implementation_started": true,
-    "reason": "PR #8 remains quarantined until M1-M3 semantic PASS."
+    "reason": "Existing M4 implementation PR #8 is preserved. It diverged from its M3 merge base 76262b174ac85bda1d6572343760737712c31c77; reconcile its existing commits onto the latest valid M3 head 2129f5a667a1447eaa60d81461211a2564368f69 before treating it as current."
   },
   "frozen_spec": {
-    "documents": ["Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx", "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx"],
+    "documents": [
+      "Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx",
+      "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx"
+    ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
   "next_session_allowed": false,
@@ -113,22 +134,32 @@
   },
   "candidate_audit": {
     "pr_number": 7,
-    "head_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
+    "head_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
     "base_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
     "base_sha": "737097483495f1d650110a18788a21db62f71bba",
     "ancestry": "PASS",
-    "mechanical_ci_run_id": 40726218314,
-    "mechanical_ci": "PASS",
-    "semantic_status": "HARD_STOP_OWNER_REVIEW",
+    "mechanical_ci_run_id": null,
+    "mechanical_ci": "PENDING",
+    "semantic_status": "INHERITED_BASELINE_NOT_YET_FINAL_ACCEPTED",
     "accepted": false,
-    "next_action": "Do not create Recovery15 or any replacement. Repair and verify controller/supervisor/bridge approval-gate handling first. Resume M1-M3 only after explicit owner authorization with a single bounded task.",
-    "mechanical_ci_evidence": "Exact-head mechanical CI passed at d0b36bf7763c868619c617593c5323d7d3294975; semantic status remains GAP."
+    "next_action": "Run exact-head mechanical verification for the latest M3 PR #7 SHA 2129f5a667a1447eaa60d81461211a2564368f69. On sufficient pass, reconcile existing PR #8 commits onto that exact head; do not restart or create retro-recovery sessions."
   },
-  "next_milestone": null,
-  "next_starting_branch": null,
+  "next_milestone": "M4 Progress/Unlock Compatibility",
+  "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
   "current_session_observation": {
     "session_id": null,
-    "status": "HARD_STOP_OWNER_REVIEW",
-    "approval_action": "No active Jules session. Automatic recovery creation prohibited."
+    "status": "NO_ACTIVE_JULES_SESSION",
+    "approval_action": "Do not wake terminal sessions. Continue with exact-head mechanical verification, then reconcile existing M4 PR #8."
+  },
+  "owner_strategy_update": {
+    "generation": 54,
+    "policy": "IMPLEMENTATION_FIRST_FULL_AUDIT_LATER",
+    "accepted_historical_pass": {
+      "M1": "PASS",
+      "M2": "PASS"
+    },
+    "m3": "Inherited implementation baseline; defer comprehensive semantic acceptance to final M1-M22 verification.",
+    "no_retro_recovery": true,
+    "no_production": true
   }
 }
