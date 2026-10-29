@@ -1,20 +1,20 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 54,
+  "generation": 55,
   "protocol_file": ".dcc/coordination-protocol.md",
-  "milestone": "M3_BASELINE_MECHANICAL_CHECK",
-  "milestone_title": "M3 inherited implementation baseline — exact-head CI before M4 reconciliation",
-  "status": "MECHANICAL_CI_PENDING",
-  "jules_session_id": null,
+  "milestone": "M4",
+  "milestone_title": "Progress/Unlock Compatibility",
+  "status": "M4_RECONCILIATION_REQUIRED",
+  "jules_session_id": "4853011554120262538",
   "approved_plan_id": null,
-  "pr_number": 7,
+  "pr_number": 8,
   "control_pr_number": 7,
-  "implementation_pr_number": 7,
-  "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
-  "expected_start_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
-  "expected_base_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
-  "expected_base_sha": "737097483495f1d650110a18788a21db62f71bba",
+  "implementation_pr_number": 8,
+  "starting_branch": "m4-progress-unlock-v2-4853011554120262538",
+  "expected_start_sha": "881ea70dafd58d4255a0c149dcf8f013dc2092a1",
+  "expected_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
+  "expected_base_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
   "audit_baseline_head_sha": "76262b174ac85bda1d6572343760737712c31c77",
   "recovery": {
     "single_active_session_policy": true,
@@ -82,16 +82,7 @@
       ]
     }
   },
-  "suspended_next_milestone": {
-    "milestone": "M4",
-    "session_id": "4853011554120262538",
-    "pr_number": 8,
-    "branch": "m4-progress-unlock-v2-4853011554120262538",
-    "head_sha": "8c13a9ad089a1f97d878683f803e9418afa8b213",
-    "status_at_freeze": "RECONCILIATION_REQUIRED",
-    "implementation_started": true,
-    "reason": "Existing M4 implementation PR #8 is preserved. It diverged from its M3 merge base 76262b174ac85bda1d6572343760737712c31c77; reconcile its existing commits onto the latest valid M3 head 2129f5a667a1447eaa60d81461211a2564368f69 before treating it as current."
-  },
+  "suspended_next_milestone": null,
   "frozen_spec": {
     "documents": [
       "Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx",
@@ -133,23 +124,24 @@
     "never_create_recovery_from_plan_approval_gate": true
   },
   "candidate_audit": {
-    "pr_number": 7,
-    "head_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
-    "base_branch": "feat/v2-m2.2-provider-linking-3617877269471098838",
-    "base_sha": "737097483495f1d650110a18788a21db62f71bba",
-    "ancestry": "PASS",
-    "mechanical_ci_run_id": null,
-    "mechanical_ci": "PENDING",
-    "semantic_status": "INHERITED_BASELINE_NOT_YET_FINAL_ACCEPTED",
+    "pr_number": 8,
+    "head_sha": "881ea70dafd58d4255a0c149dcf8f013dc2092a1",
+    "base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
+    "base_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
+    "merge_base_before_reconciliation": "76262b174ac85bda1d6572343760737712c31c77",
+    "ancestry": "RECONCILIATION_REQUIRED",
+    "mechanical_ci_run_id": 40861454993,
+    "mechanical_ci": "SKIPPED_EXACT_HEAD_CI",
+    "semantic_status": "IMPLEMENTATION_IN_PROGRESS",
     "accepted": false,
-    "next_action": "Run exact-head mechanical verification for the latest M3 PR #7 SHA 2129f5a667a1447eaa60d81461211a2564368f69. On sufficient pass, reconcile existing PR #8 commits onto that exact head; do not restart or create retro-recovery sessions."
+    "next_action": "Read-only inspect existing M4 Jules session 4853011554120262538. If nonterminal, have that same session rebase/reconcile existing PR #8 commits onto exact M3 head 2129f5a667a1447eaa60d81461211a2564368f69, preserving functionality. Do not create a retro/recovery session."
   },
   "next_milestone": "M4 Progress/Unlock Compatibility",
   "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
   "current_session_observation": {
-    "session_id": null,
-    "status": "NO_ACTIVE_JULES_SESSION",
-    "approval_action": "Do not wake terminal sessions. Continue with exact-head mechanical verification, then reconcile existing M4 PR #8."
+    "session_id": "4853011554120262538",
+    "status": "UNKNOWN",
+    "approval_action": "Read-only Bridge status check only; if active, continue same session; if terminal, do not wake it."
   },
   "owner_strategy_update": {
     "generation": 54,
@@ -161,5 +153,14 @@
     "m3": "Inherited implementation baseline; defer comprehensive semantic acceptance to final M1-M22 verification.",
     "no_retro_recovery": true,
     "no_production": true
+  },
+  "m4_reconciliation": {
+    "existing_pr": 8,
+    "existing_session": "4853011554120262538",
+    "old_merge_base": "76262b174ac85bda1d6572343760737712c31c77",
+    "required_new_base": "2129f5a667a1447eaa60d81461211a2564368f69",
+    "preserve_existing_work": true,
+    "new_session_created": false,
+    "status": "WAITING_EXISTING_SESSION_STATUS"
   }
 }
