@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 62,
+  "generation": 63,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M4",
   "milestone_title": "Progress/Unlock Compatibility",
-  "status": "M4_CONTINUATION_AUTHORIZED",
-  "jules_session_id": null,
+  "status": "WAITING_PLAN_APPROVAL",
+  "jules_session_id": "17912904003091294207",
   "approved_plan_id": null,
   "pr_number": 8,
   "control_pr_number": 7,
@@ -93,7 +93,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": true,
+  "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -137,16 +137,16 @@
     "mechanical_ci": "SKIPPED_EXACT_HEAD_CI",
     "semantic_status": "IMPLEMENTATION_IN_PROGRESS",
     "accepted": false,
-    "next_action": "Continue on PR #8's existing branch in one fresh session because previous session terminally ended plan-only. Merge exact M3 head 2129f5a667a1447eaa60d81461211a2564368f69 without force-push; remove unsupported hard-coded chapter defaults/prerequisites unless grounded in existing compatibility behavior; retain flexible progression; one PR.",
+    "next_action": "Inspect plan of sole active M4 continuation 17912904003091294207. If IN_PROGRESS with no blocker, do not intervene. Audit plan against frozen documents before approval.",
     "observed_pr_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
     "observed_pr_base_sha": "76262b174ac85bda1d6572343760737712c31c77"
   },
   "next_milestone": "M4 Progress/Unlock Compatibility",
   "next_starting_branch": "m4-progress-unlock-v2-4853011554120262538",
   "current_session_observation": {
-    "session_id": "11680409446806753179",
-    "status": "COMPLETED_TERMINAL_PLAN_ONLY",
-    "approval_action": "Protected; do not wake or approve. DCC Bridge status showed state COMPLETED, outputs null, and one planGenerated activity only. Plan cannot be corrected in-session."
+    "session_id": "17912904003091294207",
+    "status": "CREATED_PLAN_GATE",
+    "approval_action": "Retrieve the actual plan and audit against both frozen M4 documents before approval."
   },
   "owner_strategy_update": {
     "generation": 56,
@@ -168,9 +168,9 @@
     "required_new_base": "2129f5a667a1447eaa60d81461211a2564368f69",
     "preserve_existing_work": true,
     "new_session_created": true,
-    "status": "CONTINUATION_AUTHORIZED_AFTER_TERMINAL_PLAN_ONLY",
+    "status": "WAITING_PLAN_APPROVAL",
     "authorization_reason": "Prior M4 continuation became terminal after generating only a plan (API state COMPLETED, outputs null). Same-session correction/approval is forbidden; plan contained an unsupported hard-coded unlocked chapter list/prerequisite graph. Exactly one continuation authorized from PR #8's existing head to preserve implementation; require a non-force-push merge of exact M3 head and do not create a duplicate PR.",
-    "new_session_id": null,
+    "new_session_id": "17912904003091294207",
     "new_session_start_sha": "9d66852fd4196336f390816d30a5d22eb61c3e37",
     "failed_continuation": {
       "session_id": "11680409446806753179",
