@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 52,
+  "generation": 53,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M1-M3_RETRO_FIX",
   "milestone_title": "Frozen-spec retrospective repair — M1 through M3",
-  "status": "WAITING_FOR_JULES_API_PRECONDITION",
-  "jules_session_id": "12369416621004182728",
+  "status": "HARD_STOP_OWNER_REVIEW",
+  "jules_session_id": null,
   "approved_plan_id": null,
   "pr_number": 7,
   "control_pr_number": 7,
@@ -17,14 +17,30 @@
   "expected_base_sha": "737097483495f1d650110a18788a21db62f71bba",
   "audit_baseline_head_sha": "76262b174ac85bda1d6572343760737712c31c77",
   "recovery": {
-    "historical_session": "9668882045283125937",
-    "first_replacement_session": "9465567810961076340",
-    "first_replacement_state": "COMPLETED",
-    "replacement_session": null,
-    "replacement_state": "CREATE_FAILED_PRECONDITION",
-    "replacement_start_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
-    "reason": "Recovery 13 session 17428010912306933625 created by fenced Bridge run 40707001944 under generation 42 and adopted as the sole active Jules session at generation 43. It continues existing PR #7, branch/head/base unchanged. Recovery 12 is terminal/protected.",
     "single_active_session_policy": true,
+    "active_recovery_session": null,
+    "last_terminal_recovery_session": "12369416621004182728",
+    "last_terminal_recovery_state": "COMPLETED_PLAN_ONLY_OUTPUTS_NULL",
+    "pending_recovery": null,
+    "circuit_breaker": {
+      "state": "TRIPPED",
+      "max_failed_attempts_per_milestone": 5,
+      "observed_attempts_exceeded_limit": true,
+      "automatic_recovery_creation_allowed": false,
+      "reset_on_new_session": false,
+      "owner_review_required": true,
+      "reason": "M1-M3 retrospective orchestration repeatedly created replacement sessions after Jules stopped at the plan approval gate. Automatic recovery is disabled."
+    },
+    "approval_gate_policy": {
+      "waiting_plan_approval_is_terminal": false,
+      "create_recovery_from_waiting_plan_approval": false,
+      "required_controller_outcomes": [
+        "PLAN_APPROVED",
+        "PLAN_CORRECTION_SENT_SAME_SESSION",
+        "OWNER_ACTION_REQUIRED"
+      ],
+      "rule": "When Jules asks Approve Plan, fetch and semantically audit the actual plan. Approve it if correct; otherwise send correction to the SAME non-terminal session. Never create a recovery merely because approval is pending or a plan is wrong."
+    },
     "do_not_wake_terminal_sessions": [
       "9668882045283125937",
       "9465567810961076340",
@@ -41,86 +57,12 @@
       "10987024922384397097",
       "17428010912306933625",
       "12369416621004182728"
-    ],
-    "pending_recovery": {
-      "authorization_generation": 50,
-      "title": "M1-M3 Retro Fix Recovery 15",
-      "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
-      "starting_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
-      "plan_approval_required": true,
-      "reason": "Recovery14 12369416621004182728 is confirmed terminal by Bridge run 40725906569 (state COMPLETED, outputs null; only planGenerated activity). The plan is not approvable: it omits dedicated authoritative section-citation and exact-head SHA columns, and generic pre-commit testing conflicts with the approved matrix-only/no-tests phase. No same-session correction/approval is safe because the session is terminal. One replacement is authorized solely to obtain an approvable matrix-only plan, preserving PR #7 branch/head and M4 quarantine.",
-      "session_id": null,
-      "status": "CREATE_FAILED_PRECONDITION",
-      "created_via_bridge_run": null,
-      "adopted_generation": null,
-      "last_create_attempt": {
-        "bridge_run_id": 40726191003,
-        "result": "FAILED_PRECONDITION",
-        "http_status": 400,
-        "quota_confirmed": false,
-        "session_created": false,
-        "latest_supervisor_run_id": 40726339214,
-        "supervisor_attention": "SEMANTIC_CODE_AUDIT"
-      },
-      "retry_policy": "Retry the same authorized Recovery15 only after the Jules API precondition is cleared; do not message terminal Recovery14 or create a second pending recovery."
-    },
-    "last_terminal_recovery_session": "12369416621004182728",
-    "active_recovery_session": null,
-    "last_terminal_recovery_state": "COMPLETED_PLAN_ONLY_OUTPUTS_NULL",
-    "plan_audit": {
-      "state": "FAIL_NOT_APPROVABLE_TERMINAL",
-      "session_id": "12369416621004182728",
-      "plan_id": "28608e06235f4a5387f04add7227a2d6",
-      "audited_against": [
-        "Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx",
-        "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx"
-      ],
-      "plan_approved": false,
-      "findings": [
-        "Plan covers 122 rows, explicit classification/applicability/rationale, exact quote corrections, exclusions GAP, correct M3 exact-head CI evidence, and future milestone scope.",
-        "Plan schema does not require an explicit authoritative source section citation field per row.",
-        "Plan schema does not require an exact evidence SHA field per row.",
-        "Generic 'Complete Pre-Commit Steps' calls for testing/verification and conflicts with the matrix-only phase's explicit no-tests authorization."
-      ],
-      "same_session_continuation": "Impossible: terminal Bridge status; Recovery15 API create failed with 400 FAILED_PRECONDITION."
-    },
-    "current_session_observation": {
-      "session_id": "17428010912306933625",
-      "status": "AWAITING_PLAN_APPROVAL",
-      "latest_plan_id": "e91965b49d1542b3999d5fc15d1ee496",
-      "latest_plan_activity_id": "06a87a40871c409fbec0c565f7e7b6fd",
-      "approval_action": "Approved matrix-only plan after semantic audit; explicit code-edit prohibition retained."
-    }
+    ]
   },
   "retro_audit": {
-    "m1": {
-      "status": "GAP",
-      "gaps": [
-        "Exact-head test CI for accepted M1 head f47358b73dbb99ff53be0f51b2df93ef7f4743b4 is absent; run 40604079763 was Command Bridge and cannot evidence M1 tests.",
-        "The submitted matrix uses PR #7 run 40622093897 to mark M1 requirements PASS, although that run's exact tested head is d0b36bf7763c868619c617593c5323d7d3294975; the matrix must preserve those M1 rows as GAP absent head-specific evidence.",
-        "The M1 requirement/invariant/exclusion/DoD traceability matrix is incomplete."
-      ]
-    },
-    "m2": {
-      "status": "GAP",
-      "gaps": [
-        "M2 provider/linking requirement matrix is incomplete.",
-        "Threads `/v1.0/me` returns an endpoint-accepted user subject but does not prove app binding; `threadsAppId` is not used for proof. Keep app binding GAP unless documented capability and response semantics prove it.",
-        "Static network error sanitization is present, but no sentinel test currently proves user/app tokens and client secrets cannot appear in errors/stacks; the matrix incorrectly marked this PASS."
-      ]
-    },
-    "m3": {
-      "status": "GAP",
-      "gaps": [
-        "M3 requirement/invariant/DoD matrix is incomplete; report does not map every authoritative money-flow, wallet concurrency, ledger durability/idempotency, hold transition/double-action and transaction-registry requirement to exact code, named tests, exact-head CI, and status."
-      ],
-      "mechanical_ci": {
-        "run_id": 40726218314,
-        "head_sha": "d0b36bf7763c868619c617593c5323d7d3294975",
-        "status": "PASS",
-        "evidence": "Exact-head-ci success with exact SHA checkout/ancestry, unit/static, POSTGRES_TEST_URL PostgreSQL integration twice on same TEST DB; semantic acceptance remains GAP."
-      }
-    }
+    "m1": {"status": "GAP", "gaps": ["Exact-head test CI for accepted M1 head f47358b73dbb99ff53be0f51b2df93ef7f4743b4 is absent.", "M1 requirement/invariant/exclusion/DoD traceability remains incomplete."]},
+    "m2": {"status": "GAP", "gaps": ["M2 provider/linking requirement matrix remains incomplete.", "Threads app binding remains unproven.", "No sentinel test proves user/app tokens and client secrets cannot appear in errors/stacks."]},
+    "m3": {"status": "GAP", "gaps": ["M3 requirement/invariant/DoD traceability remains incomplete."], "mechanical_ci": {"run_id": 40726218314, "head_sha": "d0b36bf7763c868619c617593c5323d7d3294975", "status": "PASS", "evidence": "Exact-head mechanical CI passed; semantic acceptance remains GAP."}}
   },
   "suspended_next_milestone": {
     "milestone": "M4",
@@ -130,16 +72,13 @@
     "head_sha": "8c13a9ad089a1f97d878683f803e9418afa8b213",
     "status_at_freeze": "IMPLEMENTED_PREMATURELY_QUARANTINED",
     "implementation_started": true,
-    "reason": "PR #8 exists but is quarantined. Its M3 baseline is stale after retro fixes; do not accept or continue it."
+    "reason": "PR #8 remains quarantined until M1-M3 semantic PASS."
   },
   "frozen_spec": {
-    "documents": [
-      "Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx",
-      "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx"
-    ],
+    "documents": ["Dam_Cuoi_Chuot_V2_Full_Game_Documentation.docx", "Dam_Cuoi_Chuot_V2_Full_Game_Design.docx"],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": true,
+  "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -167,7 +106,10 @@
     "semantic_pass_required_after_ci": true,
     "plan_approval_required": true,
     "freeze_m4_until_retro_audit_pass": true,
-    "unproven_frozen_spec_requirement_is_gap": true
+    "unproven_frozen_spec_requirement_is_gap": true,
+    "max_failed_attempts_per_milestone": 5,
+    "hard_stop_after_retry_budget": true,
+    "never_create_recovery_from_plan_approval_gate": true
   },
   "candidate_audit": {
     "pr_number": 7,
@@ -177,32 +119,16 @@
     "ancestry": "PASS",
     "mechanical_ci_run_id": 40726218314,
     "mechanical_ci": "PASS",
-    "semantic_status": "BLOCKED_RECOVERY_CREATE_PRECONDITION",
+    "semantic_status": "HARD_STOP_OWNER_REVIEW",
     "accepted": false,
-    "next_action": "Preserve terminal Recovery14 and the one authorized but uncreated Recovery15. Retry the same Recovery15 creation after Jules API FAILED_PRECONDITION resolves; no quota confirmed. Do not wake terminal sessions. Keep PR #7/M4 quarantine unchanged.",
-    "mechanical_ci_evidence": "DCC Mechanical Verification exact-head-ci run 40726218314 checked out exact PR #7 head d0b36bf7763c868619c617593c5323d7d3294975, verified ancestry, ran unit/static and PostgreSQL TEST integration twice on the same persistent TEST database. Mechanical evidence only; semantic status remains blocked."
+    "next_action": "Do not create Recovery15 or any replacement. Repair and verify controller/supervisor/bridge approval-gate handling first. Resume M1-M3 only after explicit owner authorization with a single bounded task.",
+    "mechanical_ci_evidence": "Exact-head mechanical CI passed at d0b36bf7763c868619c617593c5323d7d3294975; semantic status remains GAP."
   },
-  "next_milestone": "M1-M3 Retro Fix Recovery 15",
-  "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
+  "next_milestone": null,
+  "next_starting_branch": null,
   "current_session_observation": {
-    "session_id": "12369416621004182728",
-    "status": "COMPLETED_PLAN_ONLY_OUTPUTS_NULL",
-    "latest_plan_id": "28608e06235f4a5387f04add7227a2d6",
-    "latest_plan_activity_id": "1fa9f3f447e84863a97912dd07a8a77e",
-    "approval_action": "Terminal; do not message or approve. Recovery15 create attempt failed at Jules API precondition."
-  },
-  "matrix_audit": {
-    "state": "FAIL_MATRIX_NOT_APPROVABLE",
-    "source": "Jules Recovery13 activity output via DCC Jules Command Bridge run 40715391032 job 122911542528",
-    "row_count": 122,
-    "findings": [
-      "Rows 22, 31, 32 and 41 contain wording that is not verbatim in cited source; row 22 drops source inline-code delimiters around _rev, rows 31/32 synthesize class/registry labels, row 41 inserts a colon after Economy Contract.",
-      "Row 25 cites Documentation §3 (Living Village) for profile privacy; correct supporting sources are Documentation §12 and Design §3.",
-      "No explicit Classification field distinguishes milestone requirements, invariants, exclusions and Definition of Done.",
-      "Rows 42–52 mark exclusions EXCLUDED_FROM_M1_M3 despite Exact SHA/CI GAP and no exact code-absence audit; retain these as GAP until audit proves absence.",
-      "Rows 26–41 mark Exact-Head CI GAP, although DCC Mechanical Verification run 40707628571 exact-head-ci passed against d0b36bf7763c868619c617593c5323d7d3294975; keep semantic status separate from mechanical CI.",
-      "Migration requirements in rows 20–24 mix M2/M3 with future M5; profile row 25 and tax/treasury/migration rows 37–40 mix present and future scope. Explicitly classify future milestone applicability without claiming current acceptance gaps."
-    ],
-    "next_action": "Correct matrix only under a newly approved plan; do not edit code or run tests in matrix phase."
+    "session_id": null,
+    "status": "HARD_STOP_OWNER_REVIEW",
+    "approval_action": "No active Jules session. Automatic recovery creation prohibited."
   }
 }
