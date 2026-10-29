@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 60,
+  "generation": 61,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M4",
   "milestone_title": "Progress/Unlock Compatibility",
-  "status": "M4_CONTINUATION_AUTHORIZED",
-  "jules_session_id": null,
+  "status": "WAITING_PLAN_APPROVAL",
+  "jules_session_id": "11680409446806753179",
   "approved_plan_id": null,
   "pr_number": 8,
   "control_pr_number": 7,
@@ -92,7 +92,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": true,
+  "next_session_allowed": false,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -136,16 +136,16 @@
     "mechanical_ci": "SKIPPED_EXACT_HEAD_CI",
     "semantic_status": "IMPLEMENTATION_IN_PROGRESS",
     "accepted": false,
-    "next_action": "Create exactly one M4 continuation from the verified M3 branch/SHA. Inspect and salvage PR #8's M4 changes without changing M1/M2 historical PASS or doing M1-M3 retrospective work. Keep one M4 implementation PR; require exact-head mechanical CI before milestone acceptance.",
+    "next_action": "Retrieve the actual plan from sole active M4 continuation 11680409446806753179. Audit against both frozen DOCX sources and preserve the existing PR #8 implementation; do not perform retrospective matrix work.",
     "observed_pr_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
     "observed_pr_base_sha": "76262b174ac85bda1d6572343760737712c31c77"
   },
   "next_milestone": "M4 Progress/Unlock Compatibility",
   "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
   "current_session_observation": {
-    "session_id": "8569927561636622091",
-    "status": "FAILED_TERMINAL_WRONG_STARTING_BRANCH",
-    "approval_action": "Protected: do not wake; supervisor confirmed FAILED. The checkpoint supplied a nonexistent branch suffix 9668882045281098838; PR #7 confirms the actual source ref ends 9668882045283125937."
+    "session_id": "11680409446806753179",
+    "status": "CREATED_PLAN_GATE",
+    "approval_action": "Retrieve and audit its actual plan against both frozen DOCX files before approval."
   },
   "owner_strategy_update": {
     "generation": 56,
@@ -167,9 +167,9 @@
     "required_new_base": "2129f5a667a1447eaa60d81461211a2564368f69",
     "preserve_existing_work": true,
     "new_session_created": true,
-    "status": "CONTINUATION_AUTHORIZED",
+    "status": "WAITING_PLAN_APPROVAL",
     "authorization_reason": "One M4 continuation is authorized because the prior continuation session is confirmed FAILED after cloning the nonexistent source branch recorded in the checkpoint. The exact M3 branch/SHA are verified from PR #7. Preserve M1/M2 PASS and existing PR #8 work; no retrospective repair is authorized.",
-    "new_session_id": null,
+    "new_session_id": "11680409446806753179",
     "new_session_start_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
     "failed_continuation": {
       "session_id": "8569927561636622091",
