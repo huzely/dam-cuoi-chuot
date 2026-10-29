@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:unit",
-    "test:unit": "node --test tests/account-identity.test.js tests/provider-linking.test.js tests/admin.test.js tests/command.test.js tests/config.test.js tests/feature-flags.test.js tests/idempotency.test.js tests/outbox.test.js tests/pg-adapter-contracts.test.js tests/pg-schema-migration.test.js tests/rbac.test.js tests/security-static.test.js",
-    "test:integration": "node --test tests/postgres-integration.test.js && node --test tests/postgres-m2.2-integration.test.js"
+    "test:unit": "node --test tests/account-identity.test.js tests/provider-linking.test.js tests/economy.test.js tests/verifier-sanitization.test.js tests/admin.test.js tests/command.test.js tests/config.test.js tests/feature-flags.test.js tests/idempotency.test.js tests/outbox.test.js tests/pg-adapter-contracts.test.js tests/pg-schema-migration.test.js tests/rbac.test.js tests/security-static.test.js",
+    "test:integration": "node --test tests/postgres-integration.test.js && node --test tests/postgres-m2.2-integration.test.js && node --test tests/postgres-m3-integration.test.js"
   },
   "dependencies": {
     "pg": "^8.13.3"

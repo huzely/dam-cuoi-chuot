@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const migration001Path = path.resolve(__dirname, '../migrations/001_v2_foundation_schema.sql');
 const migration002Path = path.resolve(__dirname, '../migrations/002_v2_account_identity_schema.sql');
+const migration004Path = path.resolve(__dirname, '../migrations/004_v2_economy_wallet_schema.sql');
 
 test('Schema Migration Static Verification: 001_v2_foundation_schema.sql format & integrity', () => {
   assert.ok(fs.existsSync(migration001Path), 'Migration file 001_v2_foundation_schema.sql must exist');
@@ -59,6 +60,47 @@ test('Schema Migration Static Verification: 001_v2_foundation_schema.sql format 
       sqlContent.includes(`ALTER TABLE ${legacyTable}`) || sqlContent.includes(`ALTER TABLE public.${legacyTable}`),
       false,
       `Migration must not alter legacy table ${legacyTable}`
+    );
+  }
+});
+
+test('Schema Migration Static Verification: 004_v2_economy_wallet_schema.sql format & integrity', () => {
+  assert.ok(fs.existsSync(migration004Path), 'Migration file 004_v2_economy_wallet_schema.sql must exist');
+
+  const sqlContent = fs.readFileSync(migration004Path, 'utf8');
+
+  // Verify Economy tables are declared
+  assert.ok(sqlContent.includes('v2_wallets'), 'v2_wallets table must be declared');
+  assert.ok(sqlContent.includes('v2_ledger_entries'), 'v2_ledger_entries table must be declared');
+  assert.ok(sqlContent.includes('v2_holds'), 'v2_holds table must be declared');
+
+  // Verify DB-level uniqueness constraint for idempotency
+  assert.ok(
+    sqlContent.includes('uq_v2_ledger_entries_user_idempotency'),
+    'v2_ledger_entries must declare uq_v2_ledger_entries_user_idempotency index/constraint'
+  );
+
+  // Verify non-negative balance check constraints
+  assert.ok(sqlContent.includes('available_balance >= 0'), 'v2_wallets must enforce available_balance >= 0');
+  assert.ok(sqlContent.includes('locked_balance >= 0'), 'v2_wallets must enforce locked_balance >= 0');
+
+  // Verify RLS is enabled on all tables
+  assert.ok(sqlContent.includes('ALTER TABLE public.v2_wallets ENABLE ROW LEVEL SECURITY;'));
+  assert.ok(sqlContent.includes('ALTER TABLE public.v2_ledger_entries ENABLE ROW LEVEL SECURITY;'));
+  assert.ok(sqlContent.includes('ALTER TABLE public.v2_holds ENABLE ROW LEVEL SECURITY;'));
+
+  // Verify privilege scoping (REVOKE direct client writes)
+  assert.ok(sqlContent.includes('REVOKE INSERT, UPDATE, DELETE ON public.v2_wallets'));
+  assert.ok(sqlContent.includes('REVOKE INSERT, UPDATE, DELETE ON public.v2_ledger_entries'));
+  assert.ok(sqlContent.includes('REVOKE INSERT, UPDATE, DELETE ON public.v2_holds'));
+
+  // Verify non-destructive guarantee: NO DROP or ALTER on legacy tables
+  const legacyTables = ['dcc_saves', 'dcc_rank', 'dcc_rank_review', 'dcc_ho_so'];
+  for (const legacyTable of legacyTables) {
+    assert.equal(
+      sqlContent.includes(`DROP TABLE ${legacyTable}`) || sqlContent.includes(`DROP TABLE public.${legacyTable}`),
+      false,
+      `Migration 004 must not drop legacy table ${legacyTable}`
     );
   }
 });

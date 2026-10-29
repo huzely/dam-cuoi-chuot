@@ -469,6 +469,259 @@ export class PgTxContext {
         return auditRecord;
       },
     };
+
+    this.wallets = {
+      create: async ({ userId }) => {
+        const res = await this.client.query(
+          `INSERT INTO public.v2_wallets (user_id, available_balance, locked_balance, version)
+           VALUES ($1::uuid, 0, 0, 1)
+           RETURNING user_id, available_balance, locked_balance, version, created_at, updated_at`,
+          [userId]
+        );
+        const row = res.rows[0];
+        return {
+          userId: row.user_id,
+          availableBalance: BigInt(row.available_balance),
+          lockedBalance: BigInt(row.locked_balance),
+          version: Number(row.version),
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+      getByUserId: async (userId) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+          return null;
+        }
+        const res = await this.client.query(
+          `SELECT user_id, available_balance, locked_balance, version, created_at, updated_at
+           FROM public.v2_wallets
+           WHERE user_id = $1::uuid`,
+          [userId]
+        );
+        if (res.rows.length === 0) return null;
+        const row = res.rows[0];
+        return {
+          userId: row.user_id,
+          availableBalance: BigInt(row.available_balance),
+          lockedBalance: BigInt(row.locked_balance),
+          version: Number(row.version),
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+      updateBalanceWithOptimisticLock: async (userId, { availableBalance, lockedBalance, expectedVersion }) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+          return null;
+        }
+        const res = await this.client.query(
+          `UPDATE public.v2_wallets
+           SET available_balance = $2, locked_balance = $3, version = version + 1, updated_at = NOW()
+           WHERE user_id = $1::uuid AND version = $4
+           RETURNING user_id, available_balance, locked_balance, version, created_at, updated_at`,
+          [userId, availableBalance.toString(), lockedBalance.toString(), expectedVersion]
+        );
+        if (res.rows.length === 0) return null;
+        const row = res.rows[0];
+        return {
+          userId: row.user_id,
+          availableBalance: BigInt(row.available_balance),
+          lockedBalance: BigInt(row.locked_balance),
+          version: Number(row.version),
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+    };
+
+    this.ledger = {
+      recordEntry: async ({
+        transactionId,
+        userId,
+        amount,
+        balanceAfter,
+        class: txClass,
+        type,
+        source,
+        referenceId = null,
+        counterparty = null,
+        metadata = {},
+        idempotencyKey = null,
+        configVersion = null,
+      }) => {
+        const res = await this.client.query(
+          `INSERT INTO public.v2_ledger_entries
+             (transaction_id, user_id, amount, balance_after, class, type, source, reference_id, counterparty, metadata, idempotency_key, config_version)
+           VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12)
+           RETURNING entry_id, transaction_id, user_id, amount, balance_after, class, type, source, reference_id, counterparty, metadata, created_at, idempotency_key, config_version`,
+          [
+            transactionId,
+            userId,
+            amount.toString(),
+            balanceAfter.toString(),
+            txClass,
+            type,
+            source,
+            referenceId || null,
+            counterparty ? counterparty : null,
+            JSON.stringify(metadata || {}),
+            idempotencyKey || null,
+            configVersion || null,
+          ]
+        );
+        const row = res.rows[0];
+        return {
+          entryId: row.entry_id,
+          transactionId: row.transaction_id,
+          userId: row.user_id,
+          amount: BigInt(row.amount),
+          balanceAfter: BigInt(row.balance_after),
+          class: row.class,
+          type: row.type,
+          source: row.source,
+          referenceId: row.reference_id,
+          counterparty: row.counterparty,
+          metadata: row.metadata,
+          createdAt: row.created_at,
+          idempotencyKey: row.idempotency_key,
+          configVersion: row.config_version,
+        };
+      },
+      getByUserId: async (userId) => {
+        if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+          return [];
+        }
+        const res = await this.client.query(
+          `SELECT entry_id, transaction_id, user_id, amount, balance_after, class, type, source, reference_id, counterparty, metadata, created_at, idempotency_key, config_version
+           FROM public.v2_ledger_entries
+           WHERE user_id = $1::uuid
+           ORDER BY created_at ASC`,
+          [userId]
+        );
+        return res.rows.map(row => ({
+          entryId: row.entry_id,
+          transactionId: row.transaction_id,
+          userId: row.user_id,
+          amount: BigInt(row.amount),
+          balanceAfter: BigInt(row.balance_after),
+          class: row.class,
+          type: row.type,
+          source: row.source,
+          referenceId: row.reference_id,
+          counterparty: row.counterparty,
+          metadata: row.metadata,
+          createdAt: row.created_at,
+          idempotencyKey: row.idempotency_key,
+          configVersion: row.config_version,
+        }));
+      },
+      getByTransactionId: async (transactionId) => {
+        if (!transactionId || typeof transactionId !== 'string' || !UUID_REGEX.test(transactionId)) {
+          return [];
+        }
+        const res = await this.client.query(
+          `SELECT entry_id, transaction_id, user_id, amount, balance_after, class, type, source, reference_id, counterparty, metadata, created_at, idempotency_key, config_version
+           FROM public.v2_ledger_entries
+           WHERE transaction_id = $1::uuid
+           ORDER BY created_at ASC`,
+          [transactionId]
+        );
+        return res.rows.map(row => ({
+          entryId: row.entry_id,
+          transactionId: row.transaction_id,
+          userId: row.user_id,
+          amount: BigInt(row.amount),
+          balanceAfter: BigInt(row.balance_after),
+          class: row.class,
+          type: row.type,
+          source: row.source,
+          referenceId: row.reference_id,
+          counterparty: row.counterparty,
+          metadata: row.metadata,
+          createdAt: row.created_at,
+          idempotencyKey: row.idempotency_key,
+          configVersion: row.config_version,
+        }));
+      },
+    };
+
+    this.holds = {
+      create: async ({ userId, amount, purpose, reference = null, status = 'CREATED', metadata = {} }) => {
+        const res = await this.client.query(
+          `INSERT INTO public.v2_holds (user_id, amount, purpose, reference, status, metadata)
+           VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb)
+           RETURNING hold_id, user_id, amount, purpose, reference, status, metadata, created_at, updated_at`,
+          [userId, amount.toString(), purpose, reference || null, status, JSON.stringify(metadata || {})]
+        );
+        const row = res.rows[0];
+        return {
+          holdId: row.hold_id,
+          userId: row.user_id,
+          amount: BigInt(row.amount),
+          purpose: row.purpose,
+          reference: row.reference,
+          status: row.status,
+          metadata: row.metadata,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+      getById: async (holdId) => {
+        if (!holdId || typeof holdId !== 'string' || !UUID_REGEX.test(holdId)) {
+          return null;
+        }
+        const res = await this.client.query(
+          `SELECT hold_id, user_id, amount, purpose, reference, status, metadata, created_at, updated_at
+           FROM public.v2_holds
+           WHERE hold_id = $1::uuid`,
+          [holdId]
+        );
+        if (res.rows.length === 0) return null;
+        const row = res.rows[0];
+        return {
+          holdId: row.hold_id,
+          userId: row.user_id,
+          amount: BigInt(row.amount),
+          purpose: row.purpose,
+          reference: row.reference,
+          status: row.status,
+          metadata: row.metadata,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+      updateStatus: async (holdId, { expectedStatus, newStatus, metadata = null }) => {
+        if (!holdId || typeof holdId !== 'string' || !UUID_REGEX.test(holdId)) {
+          return null;
+        }
+        const res = await this.client.query(
+          `UPDATE public.v2_holds
+           SET status = $2,
+               metadata = CASE WHEN $3::jsonb IS NOT NULL THEN metadata || $3::jsonb ELSE metadata END,
+               updated_at = NOW()
+           WHERE hold_id = $1::uuid AND status = $4
+           RETURNING hold_id, user_id, amount, purpose, reference, status, metadata, created_at, updated_at`,
+          [
+            holdId,
+            newStatus,
+            metadata ? JSON.stringify(metadata) : null,
+            expectedStatus,
+          ]
+        );
+        if (res.rows.length === 0) return null;
+        const row = res.rows[0];
+        return {
+          holdId: row.hold_id,
+          userId: row.user_id,
+          amount: BigInt(row.amount),
+          purpose: row.purpose,
+          reference: row.reference,
+          status: row.status,
+          metadata: row.metadata,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      },
+    };
   }
 
   /**
