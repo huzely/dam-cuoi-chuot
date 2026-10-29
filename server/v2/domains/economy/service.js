@@ -13,7 +13,7 @@ import {
   LEDGER_IDEMPOTENCY_UNIQUE_CONSTRAINT,
   validateIntegerDong,
   validateTransactionClass,
-  validateTransactionType,
+  validateEconomicTransactionType,
   validateHoldPurpose,
   InsufficientBalanceError,
   WalletNotFoundError,
@@ -106,7 +106,7 @@ export class EconomyService {
   async grantFaucet({
     userId,
     amount,
-    type = 'faucet.grant',
+    type,
     source = 'system',
     referenceId = null,
     metadata = {},
@@ -119,7 +119,7 @@ export class EconomyService {
 
     const valAmount = validateIntegerDong(amount);
     const validClass = validateTransactionClass('FAUCET');
-    const validType = validateTransactionType(type);
+    const validType = validateEconomicTransactionType(type, 'FAUCET');
 
     return await this._withTx(tx, async (activeTx) => {
       let wallet = await activeTx.wallets.getByUserId(userId);
@@ -188,7 +188,7 @@ export class EconomyService {
   async chargeSink({
     userId,
     amount,
-    type = 'sink.fee',
+    type,
     source = 'system',
     referenceId = null,
     metadata = {},
@@ -201,7 +201,7 @@ export class EconomyService {
 
     const valAmount = validateIntegerDong(amount);
     const validClass = validateTransactionClass('SINK');
-    const validType = validateTransactionType(type);
+    const validType = validateEconomicTransactionType(type, 'SINK');
 
     return await this._withTx(tx, async (activeTx) => {
       const wallet = await activeTx.wallets.getByUserId(userId);
@@ -277,7 +277,7 @@ export class EconomyService {
     senderId,
     recipientId,
     amount,
-    type = 'transfer.p2p',
+    type,
     source = 'p2p',
     referenceId = null,
     metadata = {},
@@ -296,7 +296,7 @@ export class EconomyService {
 
     const valAmount = validateIntegerDong(amount);
     const validClass = validateTransactionClass('TRANSFER');
-    const validType = validateTransactionType(type);
+    const validType = validateEconomicTransactionType(type, 'TRANSFER');
 
     return await this._withTx(tx, async (activeTx) => {
       const senderWallet = await activeTx.wallets.getByUserId(senderId);

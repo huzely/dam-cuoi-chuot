@@ -77,3 +77,184 @@ export class MockProviderVerifier extends ProviderVerifierPort {
     throw new InvalidProviderAssertionError(`Failed to verify provider assertion token "${assertionToken}".`);
   }
 }
+
+export class HttpProviderVerifier extends ProviderVerifierPort {
+  /**
+   * Production-ready concrete verifier adapter with dependency-injected configuration and transport.
+   *
+   * @param {Object} [config={}]
+   * @param {string} [config.googleClientId]
+   * @param {string} [config.facebookAppId]
+   * @param {string} [config.facebookAppSecret]
+   * @param {string} [config.facebookAppAccessToken]
+   * @param {string} [config.threadsAppId]
+   * @param {string} [config.threadsAppSecret]
+   * @param {string} [config.threadsAppAccessToken]
+   * @param {Function} [config.fetchImpl] - Dependency-injected fetch implementation
+   */
+  constructor(config = {}) {
+    super();
+    this.googleClientId = config.googleClientId || process.env.GOOGLE_CLIENT_ID || null;
+    this.facebookAppId = config.facebookAppId || process.env.FACEBOOK_APP_ID || null;
+    this.facebookAppSecret = config.facebookAppSecret || process.env.FACEBOOK_APP_SECRET || null;
+    this.facebookAppAccessToken = config.facebookAppAccessToken || process.env.FACEBOOK_APP_ACCESS_TOKEN || null;
+    this.threadsAppId = config.threadsAppId || process.env.THREADS_APP_ID || null;
+    this.threadsAppSecret = config.threadsAppSecret || process.env.THREADS_APP_SECRET || null;
+    this.threadsAppAccessToken = config.threadsAppAccessToken || process.env.THREADS_APP_ACCESS_TOKEN || null;
+    this.fetchImpl = config.fetchImpl || globalThis.fetch;
+
+    if (typeof this.fetchImpl !== 'function') {
+      throw new Error('HttpProviderVerifier requires a valid fetch implementation.');
+    }
+  }
+
+  async verifyAssertion(assertion) {
+    if (!assertion || typeof assertion !== 'object') {
+      throw new InvalidProviderAssertionError('Provider assertion must be an object.');
+    }
+
+    const { provider, assertionToken } = assertion;
+    if (!assertionToken || typeof assertionToken !== 'string' || assertionToken.trim() === '') {
+      throw new InvalidProviderAssertionError('Provider assertion must contain a non-empty string assertionToken.');
+    }
+
+    const normalizedProvider = validateAndNormalizeProvider(provider);
+
+    if (normalizedProvider === 'GOOGLE') {
+      return await this._verifyGoogle(assertionToken.trim());
+    } else if (normalizedProvider === 'FACEBOOK') {
+      return await this._verifyFacebook(assertionToken.trim());
+    } else if (normalizedProvider === 'THREADS') {
+      return await this._verifyThreads(assertionToken.trim());
+    }
+
+    throw new InvalidProviderAssertionError(`Unsupported provider "${provider}".`);
+  }
+
+  async _verifyGoogle(idToken) {
+    if (!this.googleClientId) {
+      throw new InvalidProviderAssertionError('Google verification requires configured googleClientId.');
+    }
+
+    let response;
+    try {
+      response = await this.fetchImpl(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+    } catch (_err) {
+      throw new InvalidProviderAssertionError('Google tokeninfo network request failed.');
+    }
+
+    if (!response || !response.ok) {
+      throw new InvalidProviderAssertionError('Google ID token verification failed or token is invalid.');
+    }
+
+    let payload;
+    try {
+      payload = await response.json();
+    } catch (_err) {
+      throw new InvalidProviderAssertionError('Failed to parse Google tokeninfo response.');
+    }
+
+    // Verify audience matches configured googleClientId
+    if (payload.aud !== this.googleClientId) {
+      throw new InvalidProviderAssertionError(`Google ID token audience mismatch: expected "${this.googleClientId}", got "${payload.aud}".`);
+    }
+
+    // Verify issuer is Google
+    const validIssuers = ['accounts.google.com', 'https://accounts.google.com'];
+    if (!validIssuers.includes(payload.iss)) {
+      throw new InvalidProviderAssertionError(`Google ID token invalid issuer "${payload.iss}".`);
+    }
+
+    if (!payload.sub || typeof payload.sub !== 'string') {
+      throw new InvalidProviderAssertionError('Google tokeninfo payload missing subject (sub).');
+    }
+
+    return {
+      provider: 'GOOGLE',
+      providerSubject: validateProviderSubject(payload.sub),
+    };
+  }
+
+  async _verifyFacebook(authToken) {
+    if (!this.facebookAppId) {
+      throw new InvalidProviderAssertionError('Facebook verification requires configured facebookAppId.');
+    }
+
+    let appAccessToken = this.facebookAppAccessToken;
+    if (!appAccessToken) {
+      if (!this.facebookAppSecret) {
+        throw new InvalidProviderAssertionError('Facebook verification requires configured facebookAppSecret or facebookAppAccessToken.');
+      }
+      appAccessToken = `${encodeURIComponent(this.facebookAppId)}|${encodeURIComponent(this.facebookAppSecret)}`;
+    }
+
+    let response;
+    try {
+      response = await this.fetchImpl(`https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(authToken)}&access_token=${appAccessToken}`);
+    } catch (_err) {
+      throw new InvalidProviderAssertionError('Facebook debug_token network request failed.');
+    }
+
+    if (!response || !response.ok) {
+      throw new InvalidProviderAssertionError('Facebook token inspection request failed.');
+    }
+
+    let result;
+    try {
+      result = await response.json();
+    } catch (_err) {
+      throw new InvalidProviderAssertionError('Failed to parse Facebook debug_token response.');
+    }
+
+    const data = result?.data;
+    if (!data || !data.is_valid) {
+      throw new InvalidProviderAssertionError('Facebook access token is invalid or expired.');
+    }
+
+    if (String(data.app_id) !== String(this.facebookAppId)) {
+      throw new InvalidProviderAssertionError(`Facebook token app_id mismatch: expected "${this.facebookAppId}", got "${data.app_id}".`);
+    }
+
+    if (!data.user_id) {
+      throw new InvalidProviderAssertionError('Facebook debug_token response missing user_id.');
+    }
+
+    return {
+      provider: 'FACEBOOK',
+      providerSubject: validateProviderSubject(String(data.user_id)),
+    };
+  }
+
+  async _verifyThreads(authToken) {
+    if (!this.threadsAppId) {
+      throw new InvalidProviderAssertionError('Threads verification requires configured threadsAppId.');
+    }
+
+    let response;
+    try {
+      response = await this.fetchImpl(`https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(authToken)}`);
+    } catch (_err) {
+      throw new InvalidProviderAssertionError('Threads API network request failed.');
+    }
+
+    if (!response || !response.ok) {
+      throw new InvalidProviderAssertionError('Threads token verification request failed or token is invalid.');
+    }
+
+    let payload;
+    try {
+      payload = await response.json();
+    } catch (_err) {
+      throw new InvalidProviderAssertionError('Failed to parse Threads API response.');
+    }
+
+    if (!payload || !payload.id) {
+      throw new InvalidProviderAssertionError('Threads token verification failed: missing user id.');
+    }
+
+    return {
+      provider: 'THREADS',
+      providerSubject: validateProviderSubject(String(payload.id)),
+    };
+  }
+}
