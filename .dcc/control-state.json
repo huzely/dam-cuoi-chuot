@@ -1,18 +1,18 @@
 {
   "schema_version": 3,
   "architecture_version": "chatgpt-jules-github-v1",
-  "generation": 61,
+  "generation": 62,
   "protocol_file": ".dcc/coordination-protocol.md",
   "milestone": "M4",
   "milestone_title": "Progress/Unlock Compatibility",
-  "status": "WAITING_PLAN_APPROVAL",
-  "jules_session_id": "11680409446806753179",
+  "status": "M4_CONTINUATION_AUTHORIZED",
+  "jules_session_id": null,
   "approved_plan_id": null,
   "pr_number": 8,
   "control_pr_number": 7,
   "implementation_pr_number": 8,
-  "starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
-  "expected_start_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
+  "starting_branch": "m4-progress-unlock-v2-4853011554120262538",
+  "expected_start_sha": "9d66852fd4196336f390816d30a5d22eb61c3e37",
   "expected_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
   "expected_base_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
   "audit_baseline_head_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
@@ -58,7 +58,8 @@
       "17428010912306933625",
       "12369416621004182728",
       "6711841954647048636",
-      "8569927561636622091"
+      "8569927561636622091",
+      "11680409446806753179"
     ]
   },
   "retro_audit": {
@@ -92,7 +93,7 @@
     ],
     "rule": "ChatGPT must read both documents for every milestone prompt, plan audit, code audit and final PASS decision."
   },
-  "next_session_allowed": false,
+  "next_session_allowed": true,
   "coordination": {
     "authority": "main:.dcc/control-state.json",
     "semantic_controller": "chatgpt",
@@ -136,16 +137,16 @@
     "mechanical_ci": "SKIPPED_EXACT_HEAD_CI",
     "semantic_status": "IMPLEMENTATION_IN_PROGRESS",
     "accepted": false,
-    "next_action": "Retrieve the actual plan from sole active M4 continuation 11680409446806753179. Audit against both frozen DOCX sources and preserve the existing PR #8 implementation; do not perform retrospective matrix work.",
-    "observed_pr_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045281098838",
+    "next_action": "Continue on PR #8's existing branch in one fresh session because previous session terminally ended plan-only. Merge exact M3 head 2129f5a667a1447eaa60d81461211a2564368f69 without force-push; remove unsupported hard-coded chapter defaults/prerequisites unless grounded in existing compatibility behavior; retain flexible progression; one PR.",
+    "observed_pr_base_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
     "observed_pr_base_sha": "76262b174ac85bda1d6572343760737712c31c77"
   },
   "next_milestone": "M4 Progress/Unlock Compatibility",
-  "next_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
+  "next_starting_branch": "m4-progress-unlock-v2-4853011554120262538",
   "current_session_observation": {
     "session_id": "11680409446806753179",
-    "status": "CREATED_PLAN_GATE",
-    "approval_action": "Retrieve and audit its actual plan against both frozen DOCX files before approval."
+    "status": "COMPLETED_TERMINAL_PLAN_ONLY",
+    "approval_action": "Protected; do not wake or approve. DCC Bridge status showed state COMPLETED, outputs null, and one planGenerated activity only. Plan cannot be corrected in-session."
   },
   "owner_strategy_update": {
     "generation": 56,
@@ -167,20 +168,24 @@
     "required_new_base": "2129f5a667a1447eaa60d81461211a2564368f69",
     "preserve_existing_work": true,
     "new_session_created": true,
-    "status": "WAITING_PLAN_APPROVAL",
-    "authorization_reason": "One M4 continuation is authorized because the prior continuation session is confirmed FAILED after cloning the nonexistent source branch recorded in the checkpoint. The exact M3 branch/SHA are verified from PR #7. Preserve M1/M2 PASS and existing PR #8 work; no retrospective repair is authorized.",
-    "new_session_id": "11680409446806753179",
-    "new_session_start_sha": "2129f5a667a1447eaa60d81461211a2564368f69",
+    "status": "CONTINUATION_AUTHORIZED_AFTER_TERMINAL_PLAN_ONLY",
+    "authorization_reason": "Prior M4 continuation became terminal after generating only a plan (API state COMPLETED, outputs null). Same-session correction/approval is forbidden; plan contained an unsupported hard-coded unlocked chapter list/prerequisite graph. Exactly one continuation authorized from PR #8's existing head to preserve implementation; require a non-force-push merge of exact M3 head and do not create a duplicate PR.",
+    "new_session_id": null,
+    "new_session_start_sha": "9d66852fd4196336f390816d30a5d22eb61c3e37",
     "failed_continuation": {
-      "session_id": "8569927561636622091",
-      "state": "FAILED",
-      "reason": "Supervisor run 40869363152 confirmed FAILED. Its recorded starting branch feat/v2-m3-wallet-ledger-holds-9668882045281098838 does not exist; PR #7 verifies feat/v2-m3-wallet-ledger-holds-9668882045283125937 at 2129f5a667a1447eaa60d81461211a2564368f69.",
+      "session_id": "11680409446806753179",
+      "state": "COMPLETED",
+      "reason": "Bridge status at run 40881999109: outputs=null; sole activity planGenerated. It terminally ended before approval/implementation; no in-session correction or approval is permitted.",
       "protected": true
     },
     "correct_starting_branch": "feat/v2-m3-wallet-ledger-holds-9668882045283125937",
     "current_pr8_head": "9d66852fd4196336f390816d30a5d22eb61c3e37",
     "pr8_head_drift_from_checkpoint": true,
-    "pr8_exact_head_ci": "SKIPPED"
+    "pr8_exact_head_ci": "SKIPPED",
+    "plan_audit_findings": [
+      "Plan proposes default unlocked chapters 1,3,5,10 and a chapter prerequisite graph not stated by either frozen DOCX; must be sourced from existing compatibility behavior or omitted.",
+      "Frozen Documentation §2 and Design §2.1 define progression as natural, not a rigid lock chain; Design §2.2 preserves Chapter IX as Hội Xuân and Chapter X as the existing Ghép Tranh/Ghép Chung engine."
+    ]
   },
   "m3_mechanical_baseline": {
     "pr_number": 7,
